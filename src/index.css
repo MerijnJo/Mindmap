@@ -36,6 +36,20 @@ body {
   z-index: 1;
 }
 
+.site-topbar {
+  isolation: isolate;
+  background: #ffffff !important;
+  opacity: 1 !important;
+}
+
+.site-topbar::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  background: #ffffff;
+}
+
 /* Remove React Flow's default square selection box */
 .react-flow__node:focus,
 .react-flow__node:focus-visible,
@@ -71,7 +85,6 @@ body {
   isolation: isolate;
   background: #ffffff !important;
   opacity: 1 !important;
-  padding-left: 14px;
 }
 
 .coach-drawer::before {
@@ -82,8 +95,14 @@ body {
   background: #ffffff;
 }
 
-.coach-drawer > * {
-  margin-left: 0;
+.coach-section {
+  padding-left: 1.75rem;
+  padding-right: 1.5rem;
+}
+
+.coach-error {
+  margin-left: 1.75rem;
+  margin-right: 1.5rem;
 }
 
 .coach-icon-button:hover {
@@ -119,10 +138,10 @@ body {
 
 @media (max-width: 720px) {
   .coach-drawer {
-    left: 0.75rem;
-    top: 4.75rem;
-    width: calc(100vw - 1.5rem);
-    max-height: min(520px, calc(100vh - 5.5rem));
+    left: 0;
+    top: 60px;
+    width: min(336px, calc(100vw - 1rem));
+    max-height: min(520px, calc(100vh - 60px));
   }
 
   .coach-drawer h1 {

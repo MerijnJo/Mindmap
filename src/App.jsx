@@ -45,8 +45,8 @@ function GuidancePanel({
   if (!isOpen) return null;
 
   return (
-    <aside className="coach-drawer absolute left-4 top-20 z-20 flex max-h-[min(620px,calc(100vh-6rem))] w-[320px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden border-2 border-neutral-900 shadow-[8px_8px_0_rgba(0,0,0,0.14)]">
-      <div className="border-b border-neutral-900 py-4 pl-10 pr-7">
+    <aside className="coach-drawer absolute left-0 top-[60px] z-20 flex max-h-[min(620px,calc(100vh-60px))] w-[336px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden border-2 border-t-0 border-neutral-900 shadow-[8px_8px_0_rgba(0,0,0,0.14)]">
+      <div className="coach-section border-b border-neutral-900 py-4">
         <div className="flex items-start justify-between gap-3">
           <h1 className="font-serif text-2xl font-bold leading-tight text-neutral-950">AI Mind Map Coach</h1>
           <button
@@ -59,7 +59,7 @@ function GuidancePanel({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 border-b border-neutral-900 py-3 pl-10 pr-7">
+      <div className="coach-section flex items-center justify-between gap-3 border-b border-neutral-900 py-3">
         <div className="min-w-0">
           <p className="truncate text-sm leading-5 text-neutral-800">
             {selectedNode ? `Focused on "${selectedNode.data?.label || 'Untitled'}"` : `${nodeCount} node${nodeCount === 1 ? '' : 's'} in this map`}
@@ -75,26 +75,26 @@ function GuidancePanel({
       </div>
 
       {error && (
-        <div className="my-4 ml-10 mr-7 border border-red-300 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
+        <div className="coach-error my-4 border border-red-300 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
           {error}
         </div>
       )}
 
       {!guidance && !error && (
-        <div className="py-4 pl-10 pr-7 font-serif text-lg leading-7 text-neutral-900">
+        <div className="coach-section py-4 font-serif text-lg leading-7 text-neutral-900">
           Ask the coach to review your map structure and suggest what to think about next.
         </div>
       )}
 
       {guidance && (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <p className="border-b border-neutral-900 py-4 pl-10 pr-7 font-serif text-base leading-6 text-neutral-900">
+          <p className="coach-section border-b border-neutral-900 py-4 font-serif text-base leading-6 text-neutral-900">
             {guidance.overview}
           </p>
 
           <div className="flex flex-col">
             {(guidance.suggestions || []).map((suggestion, index) => (
-              <div key={`${suggestion.nodeId || 'map'}-${index}`} className="border-b border-neutral-900 py-4 pl-10 pr-7">
+              <div key={`${suggestion.nodeId || 'map'}-${index}`} className="coach-section border-b border-neutral-900 py-4">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="font-serif text-xl font-bold leading-6 text-neutral-950">{suggestion.title}</h2>
                   <span className="font-sans text-xs text-neutral-700">
@@ -164,7 +164,7 @@ function Flow() {
 
   return (
     <div style={{ width: '100vw', height: '100vh' }} className="mindmap-canvas-shell relative overflow-hidden">
-      <header className="site-topbar absolute left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-neutral-900 bg-white/90 px-5 backdrop-blur-sm">
+      <header className="site-topbar absolute left-0 top-0 z-30 flex h-[60px] w-full items-center justify-between border-b-2 border-neutral-900 px-5">
         <div className="flex min-w-0 items-baseline gap-3">
           <span className="font-serif text-2xl font-bold leading-none text-neutral-950">Mindmap</span>
           <span className="hidden font-sans text-sm text-neutral-500 sm:inline">Personal idea canvas</span>
