@@ -16,6 +16,19 @@ export default function MindMapNode({ id, data, selected }) {
   // Dynamic styles based on node depth/level
   const isRoot = level === 0;
   const isChild = level === 1;
+  const hasImage = Boolean(data.placeholderImageURL);
+  const nodeSizeClass = hasImage
+    ? isRoot
+      ? 'w-[220px]'
+      : isChild
+        ? 'w-[205px]'
+        : 'w-[190px]'
+    : isRoot
+      ? 'w-[220px] min-h-[96px]'
+      : isChild
+        ? 'w-[175px] min-h-[78px]'
+        : 'w-[165px] min-h-[70px]';
+  const imageSizeClass = isRoot ? 'h-[140px]' : isChild ? 'h-[130px]' : 'h-[120px]';
 
   const onAddChild = () => {
     const nodes = getNodes();
@@ -46,7 +59,7 @@ export default function MindMapNode({ id, data, selected }) {
         source: id,
         target: newNodeId,
         type: 'straight',
-        animated: true,
+        animated: false,
       },
     ]);
   };
@@ -74,17 +87,13 @@ export default function MindMapNode({ id, data, selected }) {
   };
 
   return (
-    <div className={`flex flex-col items-center justify-center relative shadow-md rounded-2xl border group transition-all hover:shadow-lg
-      ${isRoot ? 'bg-indigo-600 border-indigo-700 text-white w-[200px] min-h-[90px] p-4' : ''}
-      ${isChild ? 'bg-indigo-50 border-indigo-200 w-[160px] min-h-[70px] p-3' : ''}
-      ${!isRoot && !isChild ? 'bg-white border-slate-200 w-[140px] min-h-[60px] p-2' : ''}
-      ${selected ? 'ring-2 ring-offset-2 ring-indigo-500' : ''}
+    <div className={`mind-map-node group relative border border-neutral-900 bg-white shadow-sm transition hover:shadow-md
+      ${nodeSizeClass}
+      ${selected ? 'selected-node' : ''}
     `}>
-      {/* Drag Handle (Forced to left side using inline styles) */}
       {id !== 'root' && (
         <div 
-          className="absolute top-1/2 transform -translate-y-1/2 w-6 h-8 text-slate-400 hover:text-slate-600 flex items-center justify-center cursor-grab active:cursor-grabbing z-10 transition-colors" 
-          style={{ left: '16px' }}
+          className="absolute left-2 top-1/2 z-20 flex h-8 w-5 -translate-y-1/2 cursor-grab items-center justify-center bg-white/65 text-neutral-900 opacity-80 transition hover:opacity-100 active:cursor-grabbing"
           title="Drag node"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -102,54 +111,78 @@ export default function MindMapNode({ id, data, selected }) {
       {id !== 'root' && (
         <Handle 
           type="target" 
-          position={Position.Left} 
+          position={Position.Top} 
           className="opacity-0"
-          style={{ left: '50%' }}
+          style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
         />
       )}
 
-      <input
-        className={`nodrag font-semibold outline-none bg-transparent w-[80%] text-center border-none
-          ${isRoot ? 'text-white placeholder-indigo-300 text-xl' : ''}
-          ${isChild ? 'text-slate-800 placeholder-slate-400 text-lg' : ''}
-          ${!isRoot && !isChild ? 'text-slate-800 placeholder-slate-400 text-base' : ''}
-        `}
-        value={data.label || ''}
-        onChange={onChange}
-        placeholder="Enter idea..."
-      />
+      <div className={`${hasImage ? 'border-b border-neutral-900 px-8 py-1' : 'flex min-h-[inherit] flex-col items-center justify-center px-4 py-4'}`}>
+        <input
+          className={`nodrag w-full border-none bg-transparent text-center font-sans font-medium text-neutral-950 outline-none placeholder:text-neutral-400
+            ${hasImage ? 'text-base leading-6' : ''}
+            ${!hasImage && isRoot ? 'text-xl' : ''}
+            ${!hasImage && isChild ? 'text-lg' : ''}
+            ${!hasImage && !isRoot && !isChild ? 'text-base' : ''}
+          `}
+          value={data.label || ''}
+          onChange={onChange}
+          placeholder="Enter idea..."
+        />
+
+        {!hasImage && (
+          <button
+            className={`nodrag mt-3 flex h-7 w-7 items-center justify-center rounded-none border border-neutral-900 bg-white text-neutral-950 shadow-sm transition hover:bg-neutral-100
+              ${isFetching ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+            onClick={handleFetchImage}
+            disabled={isFetching}
+            title="Find image"
+          >
+            {isFetching ? (
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            )}
+          </button>
+        )}
+      </div>
       
-      {/* Contextual Image Search Placeholder */}
-      {data.placeholderImageURL ? (
-        <img src={data.placeholderImageURL} alt="Node content" className="mt-3 w-full max-h-32 rounded-md object-cover pointer-events-none" />
-      ) : (
-        <button
-          className={`nodrag mt-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors z-10 cursor-pointer shadow-sm
-            ${isRoot ? 'bg-white text-indigo-600 hover:bg-indigo-50' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}
-            ${isFetching ? 'opacity-50 cursor-not-allowed' : ''}`}
-          onClick={handleFetchImage}
-          disabled={isFetching}
-          title="Find Image"
-        >
-          {isFetching ? (
-            <span className="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full"></span>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21 15 16 10 5 21" />
-            </svg>
-          )}
-        </button>
+      {hasImage && (
+        <div className="relative">
+          <img src={data.placeholderImageURL} alt="Node content" className={`block ${imageSizeClass} w-full object-cover pointer-events-none`} />
+          <button
+            className={`nodrag absolute right-2 top-2 flex h-7 w-7 items-center justify-center border border-neutral-900 bg-white/85 text-neutral-950 shadow-sm transition hover:bg-white
+              ${isFetching ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+            onClick={handleFetchImage}
+            disabled={isFetching}
+            title="Refresh image"
+          >
+            {isFetching ? (
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            )}
+          </button>
+        </div>
       )}
 
-      {/* Source Handle (Right) - for outgoing connections */}
-      <Handle type="source" position={Position.Right} className="opacity-0" style={{ right: '50%' }} />
+      <Handle
+        type="source"
+        position={Position.Top}
+        className="opacity-0"
+        style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
+      />
       
-      {/* "Sprout" Button */}
       <button
-        className="nodrag absolute top-1/2 transform -translate-y-1/2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity hover:bg-blue-600 focus:outline-none shadow-sm cursor-pointer z-10"
-        style={{ right: '-32px' }}
+        className="nodrag absolute right-[-15px] top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center border border-neutral-900 bg-white text-xl leading-none text-neutral-950 opacity-0 shadow-sm transition hover:bg-neutral-100 focus:opacity-100 focus:outline-none group-hover:opacity-100"
         onClick={onAddChild}
         title="Add child node"
       >
