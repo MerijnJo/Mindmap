@@ -31,6 +31,37 @@ const initialNodes = [
 
 const initialEdges = [];
 
+const followUpPrompts = [
+  {
+    id: 'next',
+    label: 'What should I add next?',
+  },
+  {
+    id: 'connect',
+    label: 'How do these ideas connect?',
+  },
+  {
+    id: 'clarify',
+    label: 'What should I explain better?',
+  },
+];
+
+function getFollowUpReply(promptId, guidance) {
+  const suggestions = guidance?.suggestions || [];
+  const matchingSuggestion =
+    suggestions.find((suggestion) => suggestion.type === promptId)
+    || suggestions.find((suggestion) => promptId === 'next' && suggestion.type === 'next-step')
+    || suggestions.find((suggestion) => promptId === 'connect' && suggestion.type === 'connection')
+    || suggestions.find((suggestion) => promptId === 'clarify' && suggestion.type === 'clarify')
+    || suggestions[0];
+
+  if (!matchingSuggestion) {
+    return 'I would start by adding one small idea that feels clearly connected to your main topic.';
+  }
+
+  return `${matchingSuggestion.message} ${matchingSuggestion.question}`;
+}
+
 function GuidancePanel({
   isOpen,
   guidance,
@@ -38,26 +69,19 @@ function GuidancePanel({
   error,
   nodeCount,
   selectedNode,
+  activeFollowUp,
   onAnalyze,
-  onClose,
+  onFollowUp,
 }) {
   if (!isOpen) return null;
 
   return (
     <aside className="coach-drawer absolute left-0 top-16 z-20 flex h-[calc(100vh-4rem)] w-[320px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden border-r border-indigo-100 bg-[#eef3ff]">
-      <div className="coach-section relative py-8 text-center">
-        <button
-          className="coach-icon-button absolute right-4 top-4"
-          onClick={onClose}
-          title="Close coach"
-        >
-          x
-        </button>
-        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border-4 border-indigo-500 bg-white shadow-[0_12px_28px_rgba(67,56,202,0.2)]">
-          <span className="font-sans text-3xl font-extrabold text-indigo-600">AI</span>
-        </div>
-        <h1 className="mt-4 font-sans text-2xl font-bold leading-tight text-indigo-700">AI Coach</h1>
-        <p className="mt-1 font-sans text-sm text-slate-500">Ready to explore?</p>
+      <div className="coach-section py-6">
+        <h1 className="font-sans text-2xl font-bold leading-tight text-indigo-700">AI Coach</h1>
+        <p className="mt-1 font-sans text-sm text-slate-500">
+          {guidance ? 'Ask a follow-up.' : 'Ready to explore?'}
+        </p>
       </div>
 
       <div className="coach-section pb-5">
@@ -70,11 +94,8 @@ function GuidancePanel({
         </button>
       </div>
 
-      <div className="coach-section pb-4">
-        <p className="font-sans text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-          Coach Suggestions
-        </p>
-        <p className="mt-2 truncate font-sans text-sm leading-5 text-slate-600">
+      <div className="coach-section pb-3">
+        <p className="truncate font-sans text-sm leading-5 text-slate-600">
           {selectedNode
             ? `Focused on "${selectedNode.data?.label || 'Untitled'}"`
             : `${nodeCount} node${nodeCount === 1 ? '' : 's'} in this map`}
@@ -88,24 +109,24 @@ function GuidancePanel({
       )}
 
       {!guidance && !error && (
-        <div className="coach-section">
-          <div className="rounded-sm border border-indigo-100 bg-white p-5 font-sans text-base leading-7 text-slate-800 shadow-sm">
-            Ask the coach to review your map structure and suggest what to think about next.
+        <div className="coach-section min-h-0 flex-1 overflow-y-auto pb-6">
+          <div className="coach-bubble coach-bubble-ai">
+            Press Analyze Mind Map and I will look at your ideas first.
           </div>
         </div>
       )}
 
       {guidance && (
         <div className="coach-section min-h-0 flex-1 overflow-y-auto pb-6">
-          <div className="rounded-sm border border-indigo-100 bg-white p-5 font-sans text-base leading-7 text-slate-800 shadow-sm">
+          <div className="coach-bubble coach-bubble-ai">
             {guidance.overview}
           </div>
 
-          <div className="mt-4 flex flex-col gap-4">
+          <div className="mt-4 flex flex-col gap-3">
             {(guidance.suggestions || []).map((suggestion, index) => (
               <div
                 key={`${suggestion.nodeId || 'map'}-${index}`}
-                className={`rounded-sm border p-4 font-sans shadow-sm ${
+                className={`coach-bubble ${
                   index % 2 === 0 ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'
                 }`}
               >
@@ -119,6 +140,32 @@ function GuidancePanel({
                 <p className="mt-3 text-sm font-semibold leading-6 text-slate-900">{suggestion.question}</p>
               </div>
             ))}
+          </div>
+
+          {activeFollowUp && (
+            <div className="mt-4 flex flex-col gap-3">
+              <div className="coach-bubble coach-bubble-user">
+                {followUpPrompts.find((prompt) => prompt.id === activeFollowUp)?.label}
+              </div>
+              <div className="coach-bubble coach-bubble-ai">
+                {getFollowUpReply(activeFollowUp, guidance)}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-5 border-t border-indigo-100 pt-4">
+            <p className="font-sans text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Ask next</p>
+            <div className="mt-3 flex flex-col gap-2">
+              {followUpPrompts.map((prompt) => (
+                <button
+                  key={prompt.id}
+                  className="coach-follow-up"
+                  onClick={() => onFollowUp(prompt.id)}
+                >
+                  {prompt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -134,6 +181,7 @@ function Flow() {
   const [guidanceError, setGuidanceError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isCoachOpen, setIsCoachOpen] = useState(false);
+  const [activeFollowUp, setActiveFollowUp] = useState(null);
 
   const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
   const styledEdges = useMemo(
@@ -166,6 +214,7 @@ function Flow() {
     try {
       const nextGuidance = await fetchMindMapGuidance({ nodes, edges, selectedNodeId });
       setGuidance(nextGuidance);
+      setActiveFollowUp(null);
     } catch (error) {
       console.error(error);
       setGuidanceError(
@@ -187,7 +236,7 @@ function Flow() {
           className="coach-launcher"
           onClick={() => setIsCoachOpen((open) => !open)}
         >
-          {isCoachOpen ? 'Close Coach' : 'AI Coach'}
+          {isCoachOpen ? 'Close' : 'AI Coach'}
         </button>
       </header>
 
@@ -198,8 +247,9 @@ function Flow() {
         error={guidanceError}
         nodeCount={nodes.length}
         selectedNode={selectedNode}
+        activeFollowUp={activeFollowUp}
         onAnalyze={handleAnalyzeMindMap}
-        onClose={() => setIsCoachOpen(false)}
+        onFollowUp={setActiveFollowUp}
       />
 
       <ReactFlow
