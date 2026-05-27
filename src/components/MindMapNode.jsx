@@ -17,6 +17,11 @@ export default function MindMapNode({ id, data, selected }) {
   const isRoot = level === 0;
   const isChild = level === 1;
   const hasImage = Boolean(data.placeholderImageURL);
+  const colorClass = isRoot
+    ? 'mind-node-root'
+    : isChild
+      ? 'mind-node-child'
+      : 'mind-node-detail';
   const nodeSizeClass = hasImage
     ? isRoot
       ? 'w-[220px]'
@@ -87,8 +92,9 @@ export default function MindMapNode({ id, data, selected }) {
   };
 
   return (
-    <div className={`mind-map-node group relative border border-neutral-900 bg-white shadow-sm transition hover:shadow-md
+    <div className={`mind-map-node group relative shadow-sm transition hover:shadow-md
       ${nodeSizeClass}
+      ${colorClass}
       ${selected ? 'selected-node' : ''}
     `}>
       {id !== 'root' && (
@@ -117,9 +123,9 @@ export default function MindMapNode({ id, data, selected }) {
         />
       )}
 
-      <div className={`${hasImage ? 'border-b border-neutral-900 px-8 py-1' : 'flex min-h-[inherit] flex-col items-center justify-center px-4 py-4'}`}>
+      <div className={`${hasImage ? 'flex items-center gap-2 rounded-t-[18px] border-b border-current px-3 py-1.5' : 'flex min-h-[inherit] flex-col items-center justify-center px-4 py-4'}`}>
         <input
-          className={`nodrag w-full border-none bg-transparent text-center font-sans font-medium text-neutral-950 outline-none placeholder:text-neutral-400
+          className={`nodrag min-w-0 flex-1 border-none bg-transparent text-center font-sans font-medium text-neutral-950 outline-none placeholder:text-neutral-400
             ${hasImage ? 'text-base leading-6' : ''}
             ${!hasImage && isRoot ? 'text-xl' : ''}
             ${!hasImage && isChild ? 'text-lg' : ''}
@@ -130,9 +136,30 @@ export default function MindMapNode({ id, data, selected }) {
           placeholder="Enter idea..."
         />
 
+        {hasImage && (
+          <button
+            className={`nodrag flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-indigo-200 bg-white text-indigo-600 shadow-sm transition hover:bg-indigo-50
+              ${isFetching ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+            onClick={handleFetchImage}
+            disabled={isFetching}
+            title="Regenerate image"
+          >
+            {isFetching ? (
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 0 1-15.4 6.4L3 16" />
+                <path d="M3 21v-5h5" />
+                <path d="M3 12A9 9 0 0 1 18.4 5.6L21 8" />
+                <path d="M21 3v5h-5" />
+              </svg>
+            )}
+          </button>
+        )}
+
         {!hasImage && (
           <button
-            className={`nodrag mt-3 flex h-7 w-7 items-center justify-center rounded-none border border-neutral-900 bg-white text-neutral-950 shadow-sm transition hover:bg-neutral-100
+            className={`nodrag mt-3 flex h-10 w-10 items-center justify-center rounded-full border-2 border-indigo-200 bg-white text-indigo-600 shadow-sm transition hover:bg-indigo-50
               ${isFetching ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
             onClick={handleFetchImage}
             disabled={isFetching}
@@ -141,7 +168,7 @@ export default function MindMapNode({ id, data, selected }) {
             {isFetching ? (
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                 <circle cx="8.5" cy="8.5" r="1.5" />
                 <polyline points="21 15 16 10 5 21" />
@@ -152,25 +179,8 @@ export default function MindMapNode({ id, data, selected }) {
       </div>
       
       {hasImage && (
-        <div className="relative">
+        <div className="relative overflow-hidden rounded-b-[18px]">
           <img src={data.placeholderImageURL} alt="Node content" className={`block ${imageSizeClass} w-full object-cover pointer-events-none`} />
-          <button
-            className={`nodrag absolute right-2 top-2 flex h-7 w-7 items-center justify-center border border-neutral-900 bg-white/85 text-neutral-950 shadow-sm transition hover:bg-white
-              ${isFetching ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-            onClick={handleFetchImage}
-            disabled={isFetching}
-            title="Refresh image"
-          >
-            {isFetching ? (
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
-              </svg>
-            )}
-          </button>
         </div>
       )}
 
@@ -182,7 +192,7 @@ export default function MindMapNode({ id, data, selected }) {
       />
       
       <button
-        className="nodrag absolute right-[-15px] top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center border border-neutral-900 bg-white text-xl leading-none text-neutral-950 opacity-0 shadow-sm transition hover:bg-neutral-100 focus:opacity-100 focus:outline-none group-hover:opacity-100"
+        className="nodrag absolute right-[-22px] top-1/2 z-30 flex h-11 w-11 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-2 border-indigo-500 bg-white text-2xl font-semibold leading-none text-indigo-600 opacity-0 shadow-lg transition hover:bg-indigo-50 focus:opacity-100 focus:outline-none group-hover:opacity-100"
         onClick={onAddChild}
         title="Add child node"
       >
