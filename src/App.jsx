@@ -45,10 +45,10 @@ function GuidancePanel({
   if (!isOpen) return null;
 
   return (
-    <aside className="coach-drawer absolute left-0 top-0 z-20 flex h-full w-[420px] max-w-[calc(100vw-1rem)] flex-col border-r border-neutral-900 bg-white/95 shadow-[8px_0_0_rgba(0,0,0,0.04)] backdrop-blur-sm">
-      <div className="border-b border-neutral-900 p-4">
-        <div className="flex items-start justify-between gap-4">
-          <h1 className="font-serif text-4xl font-bold leading-none text-neutral-950">AI Mind Map Coach</h1>
+    <aside className="coach-drawer absolute left-4 top-20 z-20 flex max-h-[min(620px,calc(100vh-6rem))] w-[320px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden border-2 border-neutral-900 shadow-[8px_8px_0_rgba(0,0,0,0.14)]">
+      <div className="border-b border-neutral-900 py-4 pl-10 pr-7">
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="font-serif text-2xl font-bold leading-tight text-neutral-950">AI Mind Map Coach</h1>
           <button
             className="coach-icon-button"
             onClick={onClose}
@@ -59,9 +59,9 @@ function GuidancePanel({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 border-b border-neutral-900 px-4 py-3">
-        <div>
-          <p className="text-sm leading-5 text-neutral-800">
+      <div className="flex items-center justify-between gap-3 border-b border-neutral-900 py-3 pl-10 pr-7">
+        <div className="min-w-0">
+          <p className="truncate text-sm leading-5 text-neutral-800">
             {selectedNode ? `Focused on "${selectedNode.data?.label || 'Untitled'}"` : `${nodeCount} node${nodeCount === 1 ? '' : 's'} in this map`}
           </p>
         </div>
@@ -75,34 +75,34 @@ function GuidancePanel({
       </div>
 
       {error && (
-        <div className="m-4 border border-red-300 bg-red-50 p-3 font-sans text-sm text-red-700">
+        <div className="my-4 ml-10 mr-7 border border-red-300 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
           {error}
         </div>
       )}
 
       {!guidance && !error && (
-        <div className="p-4 font-serif text-xl leading-8 text-neutral-900">
+        <div className="py-4 pl-10 pr-7 font-serif text-lg leading-7 text-neutral-900">
           Ask the coach to review your map structure and suggest what to think about next.
         </div>
       )}
 
       {guidance && (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <p className="border-b border-neutral-900 p-4 font-serif text-xl leading-8 text-neutral-900">
+          <p className="border-b border-neutral-900 py-4 pl-10 pr-7 font-serif text-base leading-6 text-neutral-900">
             {guidance.overview}
           </p>
 
           <div className="flex flex-col">
             {(guidance.suggestions || []).map((suggestion, index) => (
-              <div key={`${suggestion.nodeId || 'map'}-${index}`} className="border-b border-neutral-900 p-4">
+              <div key={`${suggestion.nodeId || 'map'}-${index}`} className="border-b border-neutral-900 py-4 pl-10 pr-7">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="font-serif text-2xl font-bold leading-7 text-neutral-950">{suggestion.title}</h2>
+                  <h2 className="font-serif text-xl font-bold leading-6 text-neutral-950">{suggestion.title}</h2>
                   <span className="font-sans text-xs text-neutral-700">
                     {suggestion.type}
                   </span>
                 </div>
-                <p className="mt-6 font-serif text-lg leading-7 text-neutral-900">{suggestion.message}</p>
-                <p className="mt-4 font-serif text-lg font-bold leading-7 text-neutral-950">{suggestion.question}</p>
+                <p className="mt-4 font-serif text-base leading-6 text-neutral-900">{suggestion.message}</p>
+                <p className="mt-3 font-serif text-base font-bold leading-6 text-neutral-950">{suggestion.question}</p>
               </div>
             ))}
           </div>
@@ -163,15 +163,19 @@ function Flow() {
   }, [edges, nodes, selectedNodeId]);
 
   return (
-    <div style={{ width: '100vw', height: '100vh' }} className="relative overflow-hidden bg-white">
-      {!isCoachOpen && (
+    <div style={{ width: '100vw', height: '100vh' }} className="mindmap-canvas-shell relative overflow-hidden">
+      <header className="site-topbar absolute left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-neutral-900 bg-white/90 px-5 backdrop-blur-sm">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <span className="font-serif text-2xl font-bold leading-none text-neutral-950">Mindmap</span>
+          <span className="hidden font-sans text-sm text-neutral-500 sm:inline">Personal idea canvas</span>
+        </div>
         <button
-          className="coach-launcher absolute left-4 top-4 z-20 border border-neutral-900 bg-white/90 px-4 py-2 font-serif text-xl font-bold text-neutral-950 shadow-[4px_4px_0_rgba(0,0,0,0.08)] backdrop-blur-sm transition hover:-translate-y-0.5 hover:bg-neutral-50"
-          onClick={() => setIsCoachOpen(true)}
+          className="coach-launcher border border-neutral-900 bg-white px-4 py-2 font-serif text-base font-bold text-neutral-950 shadow-[4px_4px_0_rgba(0,0,0,0.08)] transition hover:-translate-y-0.5 hover:bg-neutral-50"
+          onClick={() => setIsCoachOpen((open) => !open)}
         >
-          AI Coach
+          {isCoachOpen ? 'Close Coach' : 'AI Coach'}
         </button>
-      )}
+      </header>
       <GuidancePanel
         isOpen={isCoachOpen}
         guidance={guidance}
@@ -200,8 +204,8 @@ function Flow() {
           style: { stroke: '#9ca3af', strokeWidth: 1.4, strokeDasharray: '6 7' },
         }}
       >
-        <Controls position="bottom-left" className="flow-controls" />
-        <Background variant="dots" gap={20} size={1.5} color="#b8bec8" />
+        <Controls position="top-right" className="flow-controls" />
+        <Background variant="dots" gap={20} size={1.45} color="#aeb8c6" />
       </ReactFlow>
     </div>
   );

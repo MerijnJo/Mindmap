@@ -14,6 +14,28 @@ body {
   font-family: Georgia, "Times New Roman", serif;
 }
 
+.mindmap-canvas-shell {
+  background: #fffdf7;
+}
+
+.mindmap-canvas-shell::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(45deg, rgba(17, 24, 39, 0.035) 25%, transparent 25% 75%, rgba(17, 24, 39, 0.035) 75%),
+    linear-gradient(45deg, rgba(17, 24, 39, 0.035) 25%, transparent 25% 75%, rgba(17, 24, 39, 0.035) 75%);
+  background-position: 0 0, 14px 14px;
+  background-size: 28px 28px;
+}
+
+.react-flow {
+  position: relative;
+  z-index: 1;
+}
+
 /* Remove React Flow's default square selection box */
 .react-flow__node:focus,
 .react-flow__node:focus-visible,
@@ -45,13 +67,36 @@ body {
   line-height: 1;
 }
 
+.coach-drawer {
+  isolation: isolate;
+  background: #ffffff !important;
+  opacity: 1 !important;
+  padding-left: 14px;
+}
+
+.coach-drawer::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  background: #ffffff;
+}
+
+.coach-drawer > * {
+  margin-left: 0;
+}
+
 .coach-icon-button:hover {
   background: #f3f4f6;
 }
 
 .flow-controls {
-  margin-left: 16px;
-  margin-bottom: 16px;
+  top: 50% !important;
+  right: 18px !important;
+  bottom: auto !important;
+  left: auto !important;
+  margin: 0;
+  transform: translateY(-50%);
   overflow: hidden;
   border: 1px solid rgba(17, 24, 39, 0.7);
   border-radius: 0;
@@ -74,10 +119,13 @@ body {
 
 @media (max-width: 720px) {
   .coach-drawer {
-    width: calc(100vw - 1rem);
+    left: 0.75rem;
+    top: 4.75rem;
+    width: calc(100vw - 1.5rem);
+    max-height: min(520px, calc(100vh - 5.5rem));
   }
 
   .coach-drawer h1 {
-    font-size: 2.25rem;
+    font-size: 1.5rem;
   }
 }
