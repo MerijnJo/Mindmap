@@ -5,10 +5,13 @@ import {
   Background,
   useNodesState,
   useEdgesState,
+  getNodesBounds,
+  getViewportForBounds,
   addEdge,
   ReactFlowProvider,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { toPng } from 'html-to-image';
 
 import MindMapNode from './components/MindMapNode';
 import { fetchMindMapGuidance } from './aiGuidanceService';
@@ -30,6 +33,10 @@ const initialNodes = [
 ];
 
 const initialEdges = [];
+
+const EXPORT_PADDING = 80;
+const EXPORT_MIN_WIDTH = 900;
+const EXPORT_MIN_HEIGHT = 650;
 
 const followUpPrompts = [
   {
@@ -60,6 +67,25 @@ function getFollowUpReply(promptId, guidance) {
   }
 
   return `${matchingSuggestion.message} ${matchingSuggestion.question}`;
+}
+
+function downloadImage(dataUrl, fileName) {
+  const link = document.createElement('a');
+
+  link.download = fileName;
+  link.href = dataUrl;
+  link.click();
+}
+
+function getExportFileName(nodes) {
+  const rootLabel = nodes.find((node) => node.id === 'root')?.data?.label || 'mind-map';
+  const safeLabel = rootLabel
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return `${safeLabel || 'mind-map'}.png`;
 }
 
 function GuidancePanel({
@@ -134,7 +160,6 @@ function GuidancePanel({
                   <h2 className={`text-base font-bold leading-6 ${index % 2 === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                     {suggestion.title}
                   </h2>
-                  <span className="text-xs text-slate-500">{suggestion.type}</span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-700">{suggestion.message}</p>
                 <p className="mt-3 text-sm font-semibold leading-6 text-slate-900">{suggestion.question}</p>
@@ -180,6 +205,7 @@ function Flow() {
   const [guidance, setGuidance] = useState(null);
   const [guidanceError, setGuidanceError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isCoachOpen, setIsCoachOpen] = useState(false);
   const [activeFollowUp, setActiveFollowUp] = useState(null);
 
@@ -225,6 +251,53 @@ function Flow() {
     }
   }, [edges, nodes, selectedNodeId]);
 
+  const handleExportImage = useCallback(async () => {
+    if (nodes.length === 0) return;
+
+    const flowViewport = document.querySelector('.react-flow__viewport');
+    if (!flowViewport) {
+      alert('Could not find the mind map canvas to export.');
+      return;
+    }
+
+    const nodesBounds = getNodesBounds(nodes);
+    const imageWidth = Math.max(Math.ceil(nodesBounds.width + EXPORT_PADDING * 2), EXPORT_MIN_WIDTH);
+    const imageHeight = Math.max(Math.ceil(nodesBounds.height + EXPORT_PADDING * 2), EXPORT_MIN_HEIGHT);
+    const viewport = getViewportForBounds(
+      nodesBounds,
+      imageWidth,
+      imageHeight,
+      0.5,
+      2,
+      EXPORT_PADDING / Math.max(imageWidth, imageHeight),
+    );
+
+    setIsExporting(true);
+    document.body.classList.add('is-exporting-mindmap');
+
+    try {
+      const dataUrl = await toPng(flowViewport, {
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+        width: imageWidth,
+        height: imageHeight,
+        style: {
+          width: `${imageWidth}px`,
+          height: `${imageHeight}px`,
+          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+        },
+      });
+
+      downloadImage(dataUrl, getExportFileName(nodes));
+    } catch (error) {
+      console.error(error);
+      alert('Export failed. If your map uses online images, try regenerating the image or exporting again.');
+    } finally {
+      document.body.classList.remove('is-exporting-mindmap');
+      setIsExporting(false);
+    }
+  }, [nodes]);
+
   return (
     <div style={{ width: '100vw', height: '100vh' }} className="mindmap-canvas-shell relative overflow-hidden">
       <header className="site-topbar absolute left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-indigo-100 px-6">
@@ -232,12 +305,21 @@ function Flow() {
           <span className="font-sans text-3xl font-extrabold leading-none text-indigo-600">MindFlow</span>
           <span className="hidden font-sans text-sm text-slate-500 sm:inline">Personal idea canvas</span>
         </div>
-        <button
-          className="coach-launcher"
-          onClick={() => setIsCoachOpen((open) => !open)}
-        >
-          {isCoachOpen ? 'Close' : 'AI Coach'}
-        </button>
+        <div className="topbar-actions">
+          <button
+            className="export-button"
+            onClick={handleExportImage}
+            disabled={isExporting}
+          >
+            {isExporting ? 'Exporting...' : 'Export PNG'}
+          </button>
+          <button
+            className="coach-launcher"
+            onClick={() => setIsCoachOpen((open) => !open)}
+          >
+            {isCoachOpen ? 'Close' : 'AI Coach'}
+          </button>
+        </div>
       </header>
 
       <GuidancePanel
