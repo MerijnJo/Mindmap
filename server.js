@@ -3,6 +3,7 @@ import 'dotenv/config';
 
 const app = express();
 const port = process.env.PORT || 3000;
+const guidanceTimeoutMs = 45000;
 
 app.get('/api/images/search', async (req, res) => {
   const { topic } = req.query;
@@ -108,7 +109,7 @@ app.use(express.json({ limit: '1mb' }));
 app.post('/api/ai/guidance', async (req, res) => {
   const { nodes = [], edges = [], selectedNodeId = null } = req.body || {};
   const apiKey = process.env.HF_API_KEY?.trim();
-  const model = process.env.HF_MODEL?.trim() || 'meta-llama/Llama-3.1-8B-Instruct';
+  const model = process.env.HF_MODEL?.trim() || 'Qwen/Qwen2.5-7B-Instruct';
 
   if (!apiKey) {
     return res.status(500).json({ error: 'HF_API_KEY is missing from the .env file. Please restart the backend.' });
@@ -205,8 +206,12 @@ Return exactly 3 suggestions using the structure above.
 `;
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), guidanceTimeoutMs);
+
     const response = await fetch('https://router.huggingface.co/v1/chat/completions', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
@@ -227,6 +232,7 @@ Return exactly 3 suggestions using the structure above.
         max_tokens: 700,
       }),
     });
+    clearTimeout(timeoutId);
 
     const data = await response.json();
 
@@ -244,6 +250,10 @@ Return exactly 3 suggestions using the structure above.
     res.json(normalizeGuidance(parseGuidance(text)));
   } catch (error) {
     console.error('Hugging Face Guidance Error:', error);
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ error: 'Hugging Face took too long to answer. Try again in a moment, or use a faster HF_MODEL.' });
+    }
+
     res.status(500).json({ error: 'Failed to generate AI guidance.' });
   }
 });
