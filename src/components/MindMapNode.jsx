@@ -3,7 +3,7 @@ import { useReactFlow, Handle, Position } from '@xyflow/react';
 import { fetchImageForTopic } from '../../imageService.js';
 
 export default function MindMapNode({ id, data, selected }) {
-  const { updateNodeData, getNodes, setNodes, setEdges } = useReactFlow();
+  const { updateNodeData, getNodes, getEdges, setNodes, setEdges } = useReactFlow();
   const [isFetching, setIsFetching] = useState(false);
 
   const onChange = (evt) => {
@@ -77,7 +77,28 @@ export default function MindMapNode({ id, data, selected }) {
     
     setIsFetching(true);
     try {
-      const imageUrl = await fetchImageForTopic(data.label);
+      const nodes = getNodes();
+      const edges = getEdges();
+      const nodeById = new Map(nodes.map((node) => [node.id, node]));
+      const parentIds = edges
+        .filter((edge) => edge.target === id)
+        .map((edge) => edge.source);
+      const childIds = edges
+        .filter((edge) => edge.source === id)
+        .map((edge) => edge.target);
+      const connectedIds = edges
+        .filter((edge) => edge.source === id || edge.target === id)
+        .map((edge) => (edge.source === id ? edge.target : edge.source));
+      const context = {
+        nodeId: id,
+        label: data.label,
+        rootLabel: nodeById.get('root')?.data?.label || '',
+        parentLabels: parentIds.map((nodeId) => nodeById.get(nodeId)?.data?.label).filter(Boolean),
+        childLabels: childIds.map((nodeId) => nodeById.get(nodeId)?.data?.label).filter(Boolean),
+        connectedLabels: connectedIds.map((nodeId) => nodeById.get(nodeId)?.data?.label).filter(Boolean),
+      };
+
+      const imageUrl = await fetchImageForTopic(data.label, context);
       
       if (imageUrl) {
         updateNodeData(id, { placeholderImageURL: imageUrl });

@@ -6,6 +6,8 @@ const port = process.env.PORT || 3000;
 const guidanceTimeoutMs = 45000;
 const imageSearchTimeoutMs = 12000;
 
+app.use(express.json({ limit: '1mb' }));
+
 function getHuggingFaceConfig() {
   return {
     apiKey: process.env.HF_API_KEY?.trim(),
@@ -20,7 +22,37 @@ function normalizeImageSearchTerm(term) {
     .trim();
 }
 
-async function translateTopicForImageSearch(topic) {
+function normalizeLabelList(labels) {
+  return Array.isArray(labels)
+    ? labels.map(normalizeImageSearchTerm).filter(Boolean)
+    : [];
+}
+
+function normalizeImageContext(topic, context = {}) {
+  return {
+    label: normalizeImageSearchTerm(context.label || topic),
+    rootLabel: normalizeImageSearchTerm(context.rootLabel),
+    parentLabels: normalizeLabelList(context.parentLabels),
+    childLabels: normalizeLabelList(context.childLabels),
+    connectedLabels: normalizeLabelList(context.connectedLabels),
+  };
+}
+
+function buildDutchContextQuery(topic, context) {
+  const parts = [
+    ...context.parentLabels,
+    context.label || topic,
+    ...context.childLabels.slice(0, 2),
+  ].filter(Boolean);
+
+  if (context.rootLabel && context.rootLabel.toLowerCase() !== (context.label || topic).toLowerCase()) {
+    parts.unshift(context.rootLabel);
+  }
+
+  return parts.join(' ');
+}
+
+async function createImageSearchKeywords(topic, context) {
   const { apiKey, model } = getHuggingFaceConfig();
   if (!apiKey) return null;
 
@@ -40,11 +72,22 @@ async function translateTopicForImageSearch(topic) {
         messages: [
           {
             role: 'system',
-            content: 'Translate Dutch school mind-map labels into short English image-search keywords. Return only the keywords, no explanation.',
+            content: [
+              'Create short English Unsplash image-search keywords for a school mind-map node.',
+              'Use the nearby mind-map context to disambiguate the node.',
+              'If the node is "fish" and the parent/root context is "ocean", prefer "ocean fish" or "marine fish", not "goldfish".',
+              'Return only 2 to 5 English keywords, no explanation.',
+            ].join(' '),
           },
           {
             role: 'user',
-            content: `Dutch label: ${topic}`,
+            content: JSON.stringify({
+              nodeLabel: topic,
+              rootLabel: context.rootLabel,
+              parentLabels: context.parentLabels,
+              childLabels: context.childLabels,
+              connectedLabels: context.connectedLabels,
+            }),
           },
         ],
         temperature: 0,
@@ -62,7 +105,7 @@ async function translateTopicForImageSearch(topic) {
       ? translatedTopic
       : null;
   } catch (error) {
-    console.warn('Image search translation failed:', error);
+    console.warn('Image search keyword creation failed:', error);
     return null;
   }
 }
@@ -104,8 +147,9 @@ function uniqueSearchCandidates(candidates) {
   });
 }
 
-app.get('/api/images/search', async (req, res) => {
-  const { topic } = req.query;
+async function handleImageSearch(req, res) {
+  const topic = normalizeImageSearchTerm(req.body?.topic || req.query.topic);
+  const context = normalizeImageContext(topic, req.body?.context || {});
 
   if (!topic) {
     return res.status(400).json({ error: 'Topic is required' });
@@ -121,10 +165,12 @@ app.get('/api/images/search', async (req, res) => {
   console.log(`[Backend] Searching Unsplash with key starting with: ${accessKey.substring(0, 5)}...`);
 
   try {
-    const translatedTopic = await translateTopicForImageSearch(topic);
+    const contextualDutchQuery = buildDutchContextQuery(topic, context);
+    const contextualEnglishQuery = await createImageSearchKeywords(topic, context);
     const searchCandidates = uniqueSearchCandidates([
+      { query: contextualEnglishQuery, lang: 'en' },
+      { query: contextualDutchQuery, lang: 'nl' },
       { query: topic, lang: 'nl' },
-      { query: translatedTopic, lang: 'en' },
       { query: topic, lang: 'en' },
     ]);
 
@@ -140,6 +186,7 @@ app.get('/api/images/search', async (req, res) => {
           imageUrl,
           searchQuery: candidate.query,
           searchLanguage: candidate.lang,
+          usedContext: Boolean(context.parentLabels.length || context.childLabels.length || context.rootLabel),
         });
       }
     }
@@ -149,7 +196,10 @@ app.get('/api/images/search', async (req, res) => {
     console.error("Unsplash API Error:", error);
     res.status(error.status || 500).json({ error: error.message || 'Afbeelding ophalen via Unsplash is mislukt.' });
   }
-});
+}
+
+app.get('/api/images/search', handleImageSearch);
+app.post('/api/images/search', handleImageSearch);
 
 function extractChatCompletionText(data) {
   return data.choices?.[0]?.message?.content?.trim();
@@ -208,8 +258,6 @@ function normalizeGuidance(guidance) {
     }),
   };
 }
-
-app.use(express.json({ limit: '1mb' }));
 
 app.post('/api/ai/guidance', async (req, res) => {
   const { nodes = [], edges = [], selectedNodeId = null } = req.body || {};

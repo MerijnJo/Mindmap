@@ -1,7 +1,13 @@
-export async function fetchImageForTopic(topic) {
+export async function fetchImageForTopic(topic, context = null) {
   try {
     // This calls our local backend proxy, NOT Unsplash directly
-    const response = await fetch(`/api/images/search?topic=${encodeURIComponent(topic)}`);
+    const response = await fetch('/api/images/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ topic, context }),
+    });
     
     if (!response.ok) {
       // Capture the exact error from the server (e.g. 504 Gateway Timeout or 404)
