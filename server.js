@@ -4,6 +4,105 @@ import 'dotenv/config';
 const app = express();
 const port = process.env.PORT || 3000;
 const guidanceTimeoutMs = 45000;
+const imageSearchTimeoutMs = 12000;
+
+function getHuggingFaceConfig() {
+  return {
+    apiKey: process.env.HF_API_KEY?.trim(),
+    model: process.env.HF_MODEL?.trim() || 'Qwen/Qwen2.5-7B-Instruct',
+  };
+}
+
+function normalizeImageSearchTerm(term) {
+  return String(term || '')
+    .replace(/^["']|["']$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function translateTopicForImageSearch(topic) {
+  const { apiKey, model } = getHuggingFaceConfig();
+  if (!apiKey) return null;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), imageSearchTimeoutMs);
+
+    const response = await fetch('https://router.huggingface.co/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: 'Translate Dutch school mind-map labels into short English image-search keywords. Return only the keywords, no explanation.',
+          },
+          {
+            role: 'user',
+            content: `Dutch label: ${topic}`,
+          },
+        ],
+        temperature: 0,
+        max_tokens: 30,
+      }),
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const translatedTopic = normalizeImageSearchTerm(extractChatCompletionText(data));
+
+    return translatedTopic && translatedTopic.toLowerCase() !== topic.toLowerCase()
+      ? translatedTopic
+      : null;
+  } catch (error) {
+    console.warn('Image search translation failed:', error);
+    return null;
+  }
+}
+
+async function searchUnsplash({ accessKey, query, lang }) {
+  const params = new URLSearchParams({
+    query,
+    lang,
+    per_page: '1',
+    client_id: accessKey,
+  });
+  const response = await fetch(`https://api.unsplash.com/search/photos?${params.toString()}`);
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error('Unsplash API Error:', data);
+    const message = data.errors?.[0] || 'Unknown';
+    const error = new Error(`Unsplash Error: ${message}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return data.results?.[0]?.urls?.small || null;
+}
+
+function uniqueSearchCandidates(candidates) {
+  const seen = new Set();
+
+  return candidates.filter((candidate) => {
+    const query = normalizeImageSearchTerm(candidate.query);
+    if (!query) return false;
+
+    const key = `${query.toLowerCase()}-${candidate.lang}`;
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+    candidate.query = query;
+    return true;
+  });
+}
 
 app.get('/api/images/search', async (req, res) => {
   const { topic } = req.query;
@@ -21,28 +120,34 @@ app.get('/api/images/search', async (req, res) => {
   // Debugging: Print the first 5 characters to ensure Node is seeing the real key
   console.log(`[Backend] Searching Unsplash with key starting with: ${accessKey.substring(0, 5)}...`);
 
-  // Passing the key in the URL instead of the Authorization header to avoid header-stripping
-  const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(topic)}&per_page=1&client_id=${accessKey}`;
-
   try {
-    // Using native fetch (available in Node.js 18+)
-    const response = await fetch(url);
+    const translatedTopic = await translateTopicForImageSearch(topic);
+    const searchCandidates = uniqueSearchCandidates([
+      { query: topic, lang: 'nl' },
+      { query: translatedTopic, lang: 'en' },
+      { query: topic, lang: 'en' },
+    ]);
 
-    const data = await response.json();
+    for (const candidate of searchCandidates) {
+      const imageUrl = await searchUnsplash({
+        accessKey,
+        query: candidate.query,
+        lang: candidate.lang,
+      });
 
-    if (!response.ok) {
-      console.error("Unsplash API Error:", data);
-      return res.status(response.status).json({ error: `Unsplash Error: ${data.errors?.[0] || 'Unknown'}` });
+      if (imageUrl) {
+        return res.json({
+          imageUrl,
+          searchQuery: candidate.query,
+          searchLanguage: candidate.lang,
+        });
+      }
     }
 
-    if (data.results && data.results.length > 0) {
-      res.json({ imageUrl: data.results[0].urls.small });
-    } else {
-      res.status(404).json({ error: 'No images found for this topic.' });
-    }
+    res.status(404).json({ error: 'Geen afbeeldingen gevonden voor dit onderwerp.' });
   } catch (error) {
     console.error("Unsplash API Error:", error);
-    res.status(500).json({ error: 'Failed to fetch image from Unsplash' });
+    res.status(error.status || 500).json({ error: error.message || 'Afbeelding ophalen via Unsplash is mislukt.' });
   }
 });
 
@@ -67,28 +172,28 @@ function normalizeGuidance(guidance) {
   const suggestionSlots = [
     {
       type: 'next-step',
-      title: 'What is good',
-      fallbackMessage: 'You already have ideas connected to your main topic. Choose one strong branch and keep building from it.',
-      fallbackQuestion: 'Which branch would be easiest for another student to understand?',
+      title: 'Wat gaat goed',
+      fallbackMessage: 'Je hebt al ideeen die bij je hoofdonderwerp passen. Kies een sterke tak en bouw die verder uit.',
+      fallbackQuestion: 'Welke tak zou voor een klasgenoot het makkelijkst te begrijpen zijn?',
     },
     {
       type: 'clarify',
-      title: 'Needs another look',
-      fallbackMessage: 'One connection could be explained more clearly. Try to show why the smaller idea belongs under the bigger idea.',
-      fallbackQuestion: 'Where could you add or move one node so the connection is easier to follow?',
+      title: 'Kijk hier nog eens naar',
+      fallbackMessage: 'Een verbinding kan nog duidelijker worden uitgelegd. Laat zien waarom het kleinere idee onder het grotere idee hoort.',
+      fallbackQuestion: 'Waar kun je een node toevoegen of verplaatsen zodat de verbinding makkelijker te volgen is?',
     },
     {
       type: 'off-topic',
-      title: 'Check if it fits',
-      fallbackMessage: 'One idea may need a clearer path back to the main topic. You can keep it if you can show that path in the map.',
-      fallbackQuestion: 'Which node would you ask a classmate to explain before deciding where it belongs?',
+      title: 'Past dit erbij',
+      fallbackMessage: 'Een idee heeft misschien een duidelijkere weg terug naar het hoofdonderwerp nodig. Je kunt het houden als je die weg in de mindmap laat zien.',
+      fallbackQuestion: 'Welke node zou je door een klasgenoot laten uitleggen voordat je beslist waar die hoort?',
     },
   ];
 
   const suggestions = Array.isArray(guidance?.suggestions) ? guidance.suggestions : [];
 
   return {
-    overview: guidance?.overview || 'You have a start to your mind map. Now check which ideas connect clearly to the main topic.',
+    overview: guidance?.overview || 'Je hebt een begin voor je mindmap. Kijk nu welke ideeen duidelijk met het hoofdonderwerp verbonden zijn.',
     focusNodeId: guidance?.focusNodeId ?? null,
     suggestions: suggestionSlots.map((slot, index) => {
       const suggestion = suggestions[index] || {};
@@ -137,6 +242,12 @@ app.post('/api/ai/guidance', async (req, res) => {
 You are an encouraging Socratic mind map coach for children aged 10 to 15.
 Your job is to help the student think, check, and improve their own mind map. Do not complete the work for them.
 
+Language:
+- The student is Dutch-speaking. Understand Dutch mind-map labels naturally.
+- Always write every user-facing part of your JSON response in Dutch: overview, title, message, and question.
+- Keep the JSON property names and the type values in English exactly as requested, because the app uses them internally.
+- If the student uses an English word in a node label, you may reuse that word, but the coaching sentence around it must still be Dutch.
+
 Coaching style:
 - Write in simple, friendly language that fits a 10 to 15 year old.
 - Be warm and specific, but do not sound childish or overly excited.
@@ -169,11 +280,11 @@ Guidance rules:
 
 Suggestion structure:
 - Always return exactly 3 suggestions.
-- Suggestion 1 must be type "next-step" and title "What is good".
+- Suggestion 1 must be type "next-step" and title "Wat gaat goed".
   It should point out one branch, category, or connection that already makes sense.
-- Suggestion 2 must be type "clarify" and title "Needs another look".
+- Suggestion 2 must be type "clarify" and title "Kijk hier nog eens naar".
   It should point out one connection, grouping, or parent-child relationship that could be clearer.
-- Suggestion 3 must be type "off-topic" and title "Check if it fits".
+- Suggestion 3 must be type "off-topic" and title "Past dit erbij".
   It should point out one non-root node that may need a clearer path back to the main topic. Never use the root node for this suggestion. If every node seems to fit, do not call anything wrong; ask the student to double-check the weakest non-root connection.
 - Each suggestion must still avoid giving the answer. It should guide the student to decide.
 
@@ -196,9 +307,9 @@ Return only valid JSON with this shape:
     {
       "nodeId": "related node id, or null",
       "type": "next-step | clarify | connection | off-topic",
-      "title": "exactly one of: What is good, Needs another look, Check if it fits",
-      "message": "2 short sentences: first say what is useful, then say what to check again without solving it",
-      "question": "one guiding question for the student"
+      "title": "exactly one of these Dutch titles: Wat gaat goed, Kijk hier nog eens naar, Past dit erbij",
+      "message": "2 short Dutch sentences: first say what is useful, then say what to check again without solving it",
+      "question": "one guiding Dutch question for the student"
     }
   ]
 }
@@ -225,7 +336,7 @@ Return exactly 3 suggestions using the structure above.
           },
           {
             role: 'user',
-            content: `Analyze this mind map and coach the student:\n${JSON.stringify(mindMap, null, 2)}`,
+            content: `Analyseer deze mindmap en coach de leerling in het Nederlands:\n${JSON.stringify(mindMap, null, 2)}`,
           },
         ],
         temperature: 0.3,

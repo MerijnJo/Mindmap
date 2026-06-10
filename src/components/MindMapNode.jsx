@@ -71,7 +71,7 @@ export default function MindMapNode({ id, data, selected }) {
 
   const handleFetchImage = async () => {
     if (!data.label) {
-      alert('Please enter a topic first.');
+      alert('Vul eerst een onderwerp in.');
       return;
     }
     
@@ -82,11 +82,11 @@ export default function MindMapNode({ id, data, selected }) {
       if (imageUrl) {
         updateNodeData(id, { placeholderImageURL: imageUrl });
       } else {
-        alert('No image found for this topic.');
+        alert('Geen afbeelding gevonden voor dit onderwerp.');
       }
     } catch (error) {
       console.error(error);
-      alert(`Search failed!\n\n1. Is 'npm run start-backend' running in a second terminal?\n2. Did you restart Vite?\n\nError details: ${error.message}`);
+      alert(`Zoeken is mislukt.\n\n1. Draait 'npm run start-backend' in een tweede terminal?\n2. Heb je Vite opnieuw gestart?\n\nFoutdetails: ${error.message}`);
     }
     setIsFetching(false);
   };
@@ -100,7 +100,7 @@ export default function MindMapNode({ id, data, selected }) {
       {id !== 'root' && (
         <div 
           className="absolute left-2 top-1/2 z-20 flex h-8 w-5 -translate-y-1/2 cursor-grab items-center justify-center bg-white/65 text-neutral-900 opacity-80 transition hover:opacity-100 active:cursor-grabbing"
-          title="Drag node"
+          title="Sleep node"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="8" cy="5" r="1.5"></circle>
@@ -133,7 +133,7 @@ export default function MindMapNode({ id, data, selected }) {
           `}
           value={data.label || ''}
           onChange={onChange}
-          placeholder="Enter idea..."
+          placeholder="Vul idee in..."
         />
 
         {hasImage && (
@@ -142,7 +142,7 @@ export default function MindMapNode({ id, data, selected }) {
               ${isFetching ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
             onClick={handleFetchImage}
             disabled={isFetching}
-            title="Regenerate image"
+            title="Laad afbeelding opnieuw"
           >
             {isFetching ? (
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
@@ -163,7 +163,7 @@ export default function MindMapNode({ id, data, selected }) {
               ${isFetching ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
             onClick={handleFetchImage}
             disabled={isFetching}
-            title="Find image"
+            title="Zoek afbeelding"
           >
             {isFetching ? (
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
@@ -180,7 +180,7 @@ export default function MindMapNode({ id, data, selected }) {
       
       {hasImage && (
         <div className="relative overflow-hidden rounded-b-[18px]">
-          <img src={data.placeholderImageURL} alt="Node content" className={`block ${imageSizeClass} w-full object-cover pointer-events-none`} />
+          <img src={data.placeholderImageURL} alt="Inhoud van node" className={`block ${imageSizeClass} w-full object-cover pointer-events-none`} />
         </div>
       )}
 
@@ -194,7 +194,7 @@ export default function MindMapNode({ id, data, selected }) {
       <button
         className="nodrag absolute right-[-22px] top-1/2 z-30 flex h-11 w-11 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-2 border-indigo-500 bg-white text-2xl font-semibold leading-none text-indigo-600 opacity-0 shadow-lg transition hover:bg-indigo-50 focus:opacity-100 focus:outline-none group-hover:opacity-100"
         onClick={onAddChild}
-        title="Add child node"
+        title="Voeg subnode toe"
       >
         +
       </button>

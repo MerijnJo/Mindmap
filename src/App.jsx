@@ -25,7 +25,7 @@ const initialNodes = [
     draggable: false,
     position: { x: 250, y: 300 },
     data: {
-      label: 'Main Topic',
+      label: 'Hoofdonderwerp',
       placeholderImageURL: null,
       level: 0,
     },
@@ -41,15 +41,15 @@ const EXPORT_MIN_HEIGHT = 650;
 const followUpPrompts = [
   {
     id: 'next',
-    label: 'What should I add next?',
+    label: 'Wat kan ik toevoegen?',
   },
   {
     id: 'connect',
-    label: 'How do these ideas connect?',
+    label: 'Hoe hangen deze ideeen samen?',
   },
   {
     id: 'clarify',
-    label: 'What should I explain better?',
+    label: 'Wat kan duidelijker?',
   },
 ];
 
@@ -63,7 +63,7 @@ function getFollowUpReply(promptId, guidance) {
     || suggestions[0];
 
   if (!matchingSuggestion) {
-    return 'I would start by adding one small idea that feels clearly connected to your main topic.';
+    return 'Ik zou beginnen met een klein idee dat duidelijk bij je hoofdonderwerp past.';
   }
 
   return `${matchingSuggestion.message} ${matchingSuggestion.question}`;
@@ -106,7 +106,7 @@ function GuidancePanel({
       <div className="coach-section py-6">
         <h1 className="font-sans text-2xl font-bold leading-tight text-indigo-700">AI Coach</h1>
         <p className="mt-1 font-sans text-sm text-slate-500">
-          {guidance ? 'Ask a follow-up.' : 'Ready to explore?'}
+          {guidance ? 'Stel een vervolgvraag.' : 'Klaar om te kijken?'}
         </p>
       </div>
 
@@ -116,15 +116,15 @@ function GuidancePanel({
           onClick={onAnalyze}
           disabled={isLoading}
         >
-          {isLoading ? 'Thinking...' : 'Analyze Mind Map'}
+          {isLoading ? 'Aan het nadenken...' : 'Analyseer mindmap'}
         </button>
       </div>
 
       <div className="coach-section pb-3">
         <p className="truncate font-sans text-sm leading-5 text-slate-600">
           {selectedNode
-            ? `Focused on "${selectedNode.data?.label || 'Untitled'}"`
-            : `${nodeCount} node${nodeCount === 1 ? '' : 's'} in this map`}
+            ? `Focus op "${selectedNode.data?.label || 'Naamloos'}"`
+            : `${nodeCount} node${nodeCount === 1 ? '' : 's'} in deze mindmap`}
         </p>
       </div>
 
@@ -137,7 +137,7 @@ function GuidancePanel({
       {!guidance && !error && (
         <div className="coach-section min-h-0 flex-1 overflow-y-auto pb-6">
           <div className="coach-bubble coach-bubble-ai">
-            Press Analyze Mind Map and I will look at your ideas first.
+            Klik op Analyseer mindmap, dan kijk ik eerst naar je ideeen.
           </div>
         </div>
       )}
@@ -179,7 +179,7 @@ function GuidancePanel({
           )}
 
           <div className="mt-5 border-t border-indigo-100 pt-4">
-            <p className="font-sans text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Ask next</p>
+            <p className="font-sans text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Vraag verder</p>
             <div className="mt-3 flex flex-col gap-2">
               {followUpPrompts.map((prompt) => (
                 <button
@@ -244,7 +244,7 @@ function Flow() {
     } catch (error) {
       console.error(error);
       setGuidanceError(
-        `AI guidance failed. Check that the backend is running and HF_API_KEY is set. ${error.message}`,
+        `AI-hulp is mislukt. Controleer of de backend draait en HF_API_KEY is ingesteld. ${error.message}`,
       );
     } finally {
       setIsAnalyzing(false);
@@ -256,7 +256,7 @@ function Flow() {
 
     const flowViewport = document.querySelector('.react-flow__viewport');
     if (!flowViewport) {
-      alert('Could not find the mind map canvas to export.');
+      alert('Ik kon het mindmap-canvas niet vinden om te exporteren.');
       return;
     }
 
@@ -291,7 +291,7 @@ function Flow() {
       downloadImage(dataUrl, getExportFileName(nodes));
     } catch (error) {
       console.error(error);
-      alert('Export failed. If your map uses online images, try regenerating the image or exporting again.');
+      alert('Exporteren is mislukt. Als je mindmap online afbeeldingen gebruikt, probeer de afbeelding opnieuw te laden of exporteer nog een keer.');
     } finally {
       document.body.classList.remove('is-exporting-mindmap');
       setIsExporting(false);
@@ -303,7 +303,7 @@ function Flow() {
       <header className="site-topbar absolute left-0 top-0 z-30 flex h-16 w-full items-center justify-between border-b border-indigo-100 px-6">
         <div className="flex min-w-0 items-baseline gap-3">
           <span className="font-sans text-3xl font-extrabold leading-none text-indigo-600">MindFlow</span>
-          <span className="hidden font-sans text-sm text-slate-500 sm:inline">Personal idea canvas</span>
+          <span className="hidden font-sans text-sm text-slate-500 sm:inline">Jouw ideeencanvas</span>
         </div>
         <div className="topbar-actions">
           <button
@@ -311,13 +311,13 @@ function Flow() {
             onClick={handleExportImage}
             disabled={isExporting}
           >
-            {isExporting ? 'Exporting...' : 'Export PNG'}
+            {isExporting ? 'Aan het exporteren...' : 'Exporteer PNG'}
           </button>
           <button
             className="coach-launcher"
             onClick={() => setIsCoachOpen((open) => !open)}
           >
-            {isCoachOpen ? 'Close' : 'AI Coach'}
+            {isCoachOpen ? 'Sluit' : 'AI Coach'}
           </button>
         </div>
       </header>
