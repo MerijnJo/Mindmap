@@ -39,17 +39,58 @@ function normalizeImageContext(topic, context = {}) {
 }
 
 function buildDutchContextQuery(topic, context) {
-  const parts = [
-    ...context.parentLabels,
-    context.label || topic,
-    ...context.childLabels.slice(0, 2),
-  ].filter(Boolean);
-
-  if (context.rootLabel && context.rootLabel.toLowerCase() !== (context.label || topic).toLowerCase()) {
-    parts.unshift(context.rootLabel);
+  if (!context.parentLabels.length && !context.rootLabel) {
+    return topic;
   }
 
+  const parentLabel = context.parentLabels[context.parentLabels.length - 1];
+  const qualifier = parentLabel || context.rootLabel;
+
+  if (!qualifier || qualifier.toLowerCase() === topic.toLowerCase()) {
+    return topic;
+  }
+
+  return `${qualifier} ${topic}`;
+}
+
+function buildSimpleDutchQuery(topic, context) {
+  const parts = [
+    context.label || topic,
+    ...context.childLabels.slice(0, 1),
+  ].filter(Boolean);
+
   return parts.join(' ');
+}
+
+function sanitizeImageKeywordsForTopic(keywords, topic) {
+  const normalizedTopic = topic.toLowerCase();
+  const pollutionWords = [
+    'pollution',
+    'plastic',
+    'trash',
+    'waste',
+    'garbage',
+    'environment',
+    'environmental',
+    'climate',
+    'chemical',
+    'chemicals',
+    'contamination',
+    'contaminated',
+    'toxic',
+    'vervuiling',
+    'milieu',
+  ];
+  const topicAllowsPollution = pollutionWords.some((word) => normalizedTopic.includes(word));
+
+  if (topicAllowsPollution) return keywords;
+
+  const cleanedKeywords = normalizeImageSearchTerm(keywords)
+    .split(' ')
+    .filter((word) => !pollutionWords.includes(word.toLowerCase()))
+    .join(' ');
+
+  return normalizeImageSearchTerm(cleanedKeywords);
 }
 
 async function createImageSearchKeywords(topic, context) {
@@ -74,8 +115,12 @@ async function createImageSearchKeywords(topic, context) {
             role: 'system',
             content: [
               'Create short English Unsplash image-search keywords for a school mind-map node.',
-              'Use the nearby mind-map context to disambiguate the node.',
-              'If the node is "fish" and the parent/root context is "ocean", prefer "ocean fish" or "marine fish", not "goldfish".',
+              'The nodeLabel is the main visual subject and must stay the main subject.',
+              'Use parent/root context only as one qualifier, such as habitat, category, or location.',
+              'Never replace the nodeLabel with the parent/root topic.',
+              'Avoid using pollution, plastic, trash, environment, or climate keywords unless the nodeLabel itself says that.',
+              'If nodeLabel is "fish" or "vissen" and parent/root is "ocean", return "ocean fish" or "marine fish", not ocean pollution and not goldfish.',
+              'If nodeLabel is "ocean" or "oceaan", return ocean-related keywords, not fish, unless fish is the nodeLabel.',
               'Return only 2 to 5 English keywords, no explanation.',
             ].join(' '),
           },
@@ -99,7 +144,10 @@ async function createImageSearchKeywords(topic, context) {
     if (!response.ok) return null;
 
     const data = await response.json();
-    const translatedTopic = normalizeImageSearchTerm(extractChatCompletionText(data));
+    const translatedTopic = sanitizeImageKeywordsForTopic(
+      extractChatCompletionText(data),
+      topic,
+    );
 
     return translatedTopic && translatedTopic.toLowerCase() !== topic.toLowerCase()
       ? translatedTopic
@@ -166,10 +214,12 @@ async function handleImageSearch(req, res) {
 
   try {
     const contextualDutchQuery = buildDutchContextQuery(topic, context);
+    const simpleDutchQuery = buildSimpleDutchQuery(topic, context);
     const contextualEnglishQuery = await createImageSearchKeywords(topic, context);
     const searchCandidates = uniqueSearchCandidates([
       { query: contextualEnglishQuery, lang: 'en' },
       { query: contextualDutchQuery, lang: 'nl' },
+      { query: simpleDutchQuery, lang: 'nl' },
       { query: topic, lang: 'nl' },
       { query: topic, lang: 'en' },
     ]);
@@ -218,7 +268,47 @@ function parseGuidance(text) {
   }
 }
 
-function normalizeGuidance(guidance) {
+function getNodeContextById(mindMap) {
+  return new Map((mindMap?.nodes || []).map((node) => [node.id, node]));
+}
+
+function needsBranchRoleRewrite(text) {
+  return [
+    /\bwelke\s+soorten\b/i,
+    /\bwat\s+voor\s+soorten\b/i,
+    /\btypes?\b/i,
+    /\bvoorbeelden\b/i,
+    /\boceaan\b[\s\S]*\brivier\b/i,
+    /\brivier\b[\s\S]*\boceaan\b/i,
+    /\bhoe\s+helpt\b/i,
+    /\bwaarom\s+is\b[\s\S]*\bbelangrijk\s+voor\b/i,
+    /\bhoe\s+kan\b[\s\S]*\bbe[iï]nvloeden\b/i,
+    /\bveroorzaker\b/i,
+  ].some((pattern) => pattern.test(text || ''));
+}
+
+function getRootFeedbackText(nodeContext) {
+  const label = nodeContext?.label || 'het hoofdonderwerp';
+
+  return {
+    message: `Je hoofdonderwerp is duidelijk en je hebt al takken die erbij kunnen passen. Kijk nu welke tak het duidelijkst laat zien waar ${label} over gaat.`,
+    question: `Welke tak laat nu het duidelijkst een oorzaak, plek of gevolg van ${label} zien?`,
+  };
+}
+
+function getBranchRoleText(nodeContext) {
+  const label = nodeContext?.label || 'deze node';
+  const pathLabels = Array.isArray(nodeContext?.pathLabels) ? nodeContext.pathLabels.filter(Boolean) : [];
+  const pathLabel = pathLabels.join(' > ') || label;
+
+  return {
+    message: `${label} kan goed in deze tak passen, maar de rol mag duidelijker worden. Laat zien of het een plek, oorzaak, gevolg, voorbeeld of levend wezen is dat met vervuiling te maken heeft.`,
+    question: `Welke rol heeft ${label} in de tak ${pathLabel}?`,
+  };
+}
+
+function normalizeGuidance(guidance, mindMap) {
+  const nodeContextById = getNodeContextById(mindMap);
   const suggestionSlots = [
     {
       type: 'next-step',
@@ -247,13 +337,21 @@ function normalizeGuidance(guidance) {
     focusNodeId: guidance?.focusNodeId ?? null,
     suggestions: suggestionSlots.map((slot, index) => {
       const suggestion = suggestions[index] || {};
+      const nodeContext = nodeContextById.get(suggestion.nodeId);
+      const textToCheck = `${suggestion.message || ''} ${suggestion.question || ''}`;
+      const shouldRewrite = nodeContext && needsBranchRoleRewrite(textToCheck);
+      const rewritten = shouldRewrite
+        ? nodeContext.isRoot
+          ? getRootFeedbackText(nodeContext)
+          : getBranchRoleText(nodeContext)
+        : null;
 
       return {
         nodeId: suggestion.nodeId ?? null,
         type: slot.type,
         title: slot.title,
-        message: suggestion.message || slot.fallbackMessage,
-        question: suggestion.question || slot.fallbackQuestion,
+        message: rewritten?.message || suggestion.message || slot.fallbackMessage,
+        question: rewritten?.question || suggestion.question || slot.fallbackQuestion,
       };
     }),
   };
@@ -272,6 +370,31 @@ app.post('/api/ai/guidance', async (req, res) => {
     return res.status(400).json({ error: 'At least one node is required for AI guidance.' });
   }
 
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const parentIdsByNode = new Map(nodes.map((node) => [node.id, []]));
+  const childIdsByNode = new Map(nodes.map((node) => [node.id, []]));
+
+  edges.forEach((edge) => {
+    if (!nodeById.has(edge.source) || !nodeById.has(edge.target)) return;
+
+    parentIdsByNode.get(edge.target)?.push(edge.source);
+    childIdsByNode.get(edge.source)?.push(edge.target);
+  });
+
+  const getLabel = (nodeId) => nodeById.get(nodeId)?.data?.label || '';
+  const getPathLabels = (nodeId, seen = new Set()) => {
+    if (seen.has(nodeId)) return [getLabel(nodeId)].filter(Boolean);
+    seen.add(nodeId);
+
+    const parents = parentIdsByNode.get(nodeId) || [];
+    if (parents.length === 0) return [getLabel(nodeId)].filter(Boolean);
+
+    return [
+      ...getPathLabels(parents[0], seen),
+      getLabel(nodeId),
+    ].filter(Boolean);
+  };
+
   const mindMap = {
     selectedNodeId,
     nodes: nodes.map((node) => ({
@@ -279,6 +402,9 @@ app.post('/api/ai/guidance', async (req, res) => {
       label: node.data?.label || '',
       level: node.data?.level ?? null,
       isRoot: node.id === 'root',
+      parentLabels: (parentIdsByNode.get(node.id) || []).map(getLabel).filter(Boolean),
+      childLabels: (childIdsByNode.get(node.id) || []).map(getLabel).filter(Boolean),
+      pathLabels: getPathLabels(node.id),
     })),
     edges: edges.map((edge) => ({
       source: edge.source,
@@ -305,7 +431,8 @@ Coaching style:
 How to reason about the map:
 - Treat the root node as the main topic. Every other node should clearly support, explain, or connect back to that topic.
 - Use the map structure: connected nodes are supporting ideas or sub-ideas.
-- Consider each node's label, level, parent/children, and whether the relationship between connected nodes is clear.
+- Consider each node's label, level, parentLabels, childLabels, pathLabels, and whether the relationship between directly connected nodes is clear.
+- Use pathLabels to distinguish duplicate labels in different branches. "Vissen" under "Oceaan" and "Vissen" under "Rivier" are different branch ideas.
 - If the selected node is provided, give it special attention.
 - A node is not off-topic just because it is broad, surprising, or imperfect. Mark it off-topic only when the connection to the main topic is unclear.
 - Do not judge whether the student's factual ideas are scientifically perfect. Judge whether the mind map structure is clear.
@@ -313,6 +440,10 @@ How to reason about the map:
 - If a child writes a broad category like "Food" or "Workout", treat it as a category. Ask whether the examples below it fit that category.
 - Do not invent relationships between separate branches. Only discuss a connection if an edge exists in the map, or if the student clearly needs a missing link to understand one branch.
 - Do not ask how two separate branches "work together" unless they are directly connected in the map.
+- Do not merge duplicate labels across separate branches. If two nodes have the same label, only coach the branch shown by that node's pathLabels.
+- For environmental-pollution maps, nodes like ocean, river, coral, and fish are usually places or living things affected by pollution. Coach the student to clarify their role in that branch: place, cause, consequence, affected living thing, example, or solution.
+- Do not ask students to add species, types, examples, or lists unless the node itself is clearly a category for types, such as "soorten vissen". For a node like "Vissen" under "Rivier", ask what role fish have in river pollution, not which fish species to add.
+- Never ask "Welke soorten..." or "Welke types..." for nodes such as Vissen, Koraal, Oceaan, Rivier, Dieren, Planten, or other normal topic nodes. Ask about the node's role in the branch instead.
 
 Guidance rules:
 - Do not give direct answers, final conclusions, essay content, or ready-made replacement nodes.
@@ -322,12 +453,17 @@ Guidance rules:
 - When something may not fit, ask the student to explain the link to the main topic, move it, or decide whether it belongs.
 - Avoid questions like "How does X help with the main topic?" because they can sound like a test question. Prefer map-building questions like "Where should X sit?", "What bigger idea does X belong under?", or "What link would make this easier to follow?"
 - Every question must be answerable by editing the mind map. Good actions are: add one node, move one node, rename one node, group examples, or draw one connection.
-- Broad questions are okay only when they focus on one specific node and help the student add examples or subnodes under it, such as "What types of supplements could go under this node?"
+- Broad questions are okay only when they focus on one specific category node and help the student decide what relationship is missing. Do not ask for species/types/examples when the main issue is the node's relationship to the root topic.
 - Do not ask vague whole-map questions such as "What aspects would you like to explore?" or questions that compare separate branches, such as "How do these work together?"
+- Avoid repeated feedback. The 3 suggestions should point to different nodes or different relationships when possible.
+- Do not produce three suggestions about the same label if duplicate labels exist. Use node ids and pathLabels to spread feedback across the map.
 - Keep the tone concise and coach-like.
 
 Suggestion structure:
 - Always return exactly 3 suggestions.
+- Every suggestion must include the exact "id" of one existing node from the provided map in nodeId.
+- Use three different nodeId values when the map has at least three non-root nodes.
+- Prefer the most relevant non-root node for nodeId. Use the root only for suggestion 1 if the whole main topic is the useful part.
 - Suggestion 1 must be type "next-step" and title "Wat gaat goed".
   It should point out one branch, category, or connection that already makes sense.
 - Suggestion 2 must be type "clarify" and title "Kijk hier nog eens naar".
@@ -340,20 +476,25 @@ Bad coaching example:
 "How does red meat help with muscle growth?"
 "How do strength training and supplements work together?"
 "What are some specific aspects of muscle growth that you'd like to explore?"
+"Welke soorten vissen kunnen we toevoegen?"
+"Hoe kunnen we de vissen in de oceaan en de rivier nog duidelijker maken?"
+"Waar zou het best passen om de vissen te plaatsen zodat de connectie duidelijker wordt?"
 
 Better coaching example:
 "Red meat looks like an example under Food. Would you keep it there, or place it under a smaller group so the branch is easier to follow?"
 "Strength Training is its own branch from Muscle Growth. Would adding one smaller exercise example under it make that branch clearer?"
 "Supplements is a branch from Muscle Growth. Would you keep it as a main branch, or move it under a bigger category like Food?"
-"Supplements is a clear branch. What types or examples could you add underneath it?"
+"Vissen staat in de tak Rivier. Welke rol heeft deze node daar: gaat het om dieren die last hebben van vervuiling, of om iets anders?"
+"Koraal staat onder Oceaan. Welke kleine toevoeging zou laten zien waarom koraal bij milieuvervuiling hoort?"
+"Oceaan is een duidelijke plek in je mindmap. Welke verbinding laat zien dat deze plek met milieuvervuiling te maken heeft?"
 
 Return only valid JSON with this shape:
 {
   "overview": "one short child-friendly observation that mentions what is already working and what to check next",
-  "focusNodeId": "node id to focus on next, or null",
+  "focusNodeId": "existing node id to focus on next",
   "suggestions": [
     {
-      "nodeId": "related node id, or null",
+      "nodeId": "exact existing node id from the map",
       "type": "next-step | clarify | connection | off-topic",
       "title": "exactly one of these Dutch titles: Wat gaat goed, Kijk hier nog eens naar, Past dit erbij",
       "message": "2 short Dutch sentences: first say what is useful, then say what to check again without solving it",
@@ -406,7 +547,7 @@ Return exactly 3 suggestions using the structure above.
       return res.status(502).json({ error: 'Hugging Face returned an empty response.' });
     }
 
-    res.json(normalizeGuidance(parseGuidance(text)));
+    res.json(normalizeGuidance(parseGuidance(text), mindMap));
   } catch (error) {
     console.error('Hugging Face Guidance Error:', error);
     if (error.name === 'AbortError') {

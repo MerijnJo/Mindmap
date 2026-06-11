@@ -69,59 +69,42 @@ body {
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.22), 0 12px 24px rgba(79, 70, 229, 0.14);
 }
 
-.coach-icon-button {
-  display: flex;
-  width: 2rem;
-  height: 2rem;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #c7cbe6;
-  background: #fff;
-  color: #1f2540;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 1.25rem;
-  line-height: 1;
-}
-
-.coach-drawer {
-  top: var(--topbar-height) !important;
-  height: calc(100vh - var(--topbar-height)) !important;
-  width: 320px;
-  isolation: isolate;
-  background: #eef3ff !important;
-  border-right: 1px solid #d9ddf5;
-  opacity: 1 !important;
-}
-
-.coach-drawer::before {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  content: "";
-  background: #eef3ff;
-}
-
-.coach-section {
-  padding-left: 1.25rem;
-  padding-right: 1.25rem;
-}
-
-.coach-error {
-  margin-left: 1.25rem;
-  margin-right: 1.25rem;
-}
-
-.coach-icon-button:hover {
-  background: #f3f4f6;
-}
-
 .topbar-actions {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   gap: 0.5rem;
   margin-left: 1rem;
+}
+
+.coach-status {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid #d7daf5;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  min-height: 2.25rem;
+  padding: 0 0.8rem;
+  white-space: nowrap;
+}
+
+.coach-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+}
+
+.coach-status-dot.is-thinking {
+  animation: coachPulse 1s ease-in-out infinite;
+  background: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.16);
 }
 
 .export-button,
@@ -149,81 +132,21 @@ body {
   opacity: 0.6;
 }
 
+.coach-launcher:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .is-exporting-mindmap .mind-map-node button,
-.is-exporting-mindmap .mind-map-node [title="Drag node"],
-.is-exporting-mindmap .react-flow__handle {
+.is-exporting-mindmap .mind-map-node [title="Sleep node"],
+.is-exporting-mindmap .react-flow__handle,
+.is-exporting-mindmap .react-flow__node-aiFeedback,
+.is-exporting-mindmap .ai-feedback-edge {
   display: none !important;
 }
 
 .is-exporting-mindmap .selected-node {
   box-shadow: none;
-}
-
-.coach-analyze-button {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 8px;
-  background: #4f46e5;
-  box-shadow: 0 10px 20px rgba(79, 70, 229, 0.22);
-  color: #ffffff;
-  cursor: pointer;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  font-size: 0.9rem;
-  font-weight: 800;
-  padding: 0.8rem 1rem;
-}
-
-.coach-analyze-button:hover {
-  background: #4338ca;
-}
-
-.coach-analyze-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.coach-bubble {
-  border: 1px solid #dbe1ff;
-  border-radius: 16px;
-  box-shadow: 0 8px 18px rgba(67, 56, 202, 0.08);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  padding: 0.95rem 1rem;
-}
-
-.coach-bubble-ai {
-  background: #ffffff;
-  color: #253044;
-  line-height: 1.55;
-}
-
-.coach-bubble-user {
-  align-self: flex-end;
-  max-width: 88%;
-  border-color: #4f46e5;
-  background: #4f46e5;
-  color: #ffffff;
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.coach-follow-up {
-  border: 1px solid #c7d2fe;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #4338ca;
-  cursor: pointer;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  font-size: 0.85rem;
-  font-weight: 700;
-  padding: 0.7rem 0.9rem;
-  text-align: left;
-}
-
-.coach-follow-up:hover {
-  background: #eef2ff;
 }
 
 .flow-controls {
@@ -296,14 +219,134 @@ body {
   color: rgba(136, 19, 55, 0.58);
 }
 
-@media (max-width: 720px) {
-  .coach-drawer {
-    left: 0;
-    width: min(320px, calc(100vw - 1rem));
-    max-height: min(520px, calc(100vh - var(--topbar-height)));
+.ai-feedback-node {
+  position: relative;
+  width: 300px;
+  min-height: 220px;
+  border: 2px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
+  color: #1f2937;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  padding: 0.85rem 0.9rem;
+  pointer-events: auto;
+}
+
+.react-flow__node-aiFeedback {
+  pointer-events: all;
+}
+
+.ai-feedback-handle {
+  width: 0.75rem !important;
+  height: 0.75rem !important;
+  border: 2px solid #ffffff !important;
+  background: #64748b !important;
+  left: -0.45rem !important;
+  opacity: 1 !important;
+}
+
+.ai-feedback-node-good {
+  border-color: #10b981;
+  background: #ecfdf5;
+}
+
+.ai-feedback-node-good .ai-feedback-handle {
+  background: #10b981 !important;
+}
+
+.ai-feedback-node-clarify {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.ai-feedback-node-clarify .ai-feedback-handle {
+  background: #f59e0b !important;
+}
+
+.ai-feedback-node-check {
+  border-color: #f43f5e;
+  background: #fff1f2;
+}
+
+.ai-feedback-node-check .ai-feedback-handle {
+  background: #f43f5e !important;
+}
+
+.ai-feedback-eyebrow {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1rem;
+  margin: 0 0 0.15rem;
+  text-transform: uppercase;
+}
+
+.ai-feedback-related {
+  color: #111827;
+  font-size: 0.98rem;
+  font-weight: 850;
+  line-height: 1.25rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ai-feedback-message {
+  color: #334155;
+  font-size: 0.82rem;
+  line-height: 1.35rem;
+  margin: 0.6rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.ai-feedback-question {
+  color: #0f172a;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.35rem;
+  margin: 0.55rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.ai-feedback-dismiss {
+  display: flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.ai-feedback-dismiss:hover {
+  background: #f8fafc;
+  color: #111827;
+}
+
+@keyframes coachPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.92);
   }
 
-  .coach-drawer h1 {
-    font-size: 1.5rem;
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 720px) {
+  .coach-status {
+    display: none;
   }
 }

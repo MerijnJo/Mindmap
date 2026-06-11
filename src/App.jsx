@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -14,9 +14,10 @@ import '@xyflow/react/dist/style.css';
 import { toPng } from 'html-to-image';
 
 import MindMapNode from './components/MindMapNode';
+import CustomNode from './components/CustomNode';
 import { fetchMindMapGuidance } from './aiGuidanceService';
 
-const nodeTypes = { mindMapNode: MindMapNode };
+const nodeTypes = { mindMapNode: MindMapNode, aiFeedback: CustomNode };
 
 const initialNodes = [
   {
@@ -37,37 +38,15 @@ const initialEdges = [];
 const EXPORT_PADDING = 80;
 const EXPORT_MIN_WIDTH = 900;
 const EXPORT_MIN_HEIGHT = 650;
-
-const followUpPrompts = [
-  {
-    id: 'next',
-    label: 'Wat kan ik toevoegen?',
-  },
-  {
-    id: 'connect',
-    label: 'Hoe hangen deze ideeen samen?',
-  },
-  {
-    id: 'clarify',
-    label: 'Wat kan duidelijker?',
-  },
-];
-
-function getFollowUpReply(promptId, guidance) {
-  const suggestions = guidance?.suggestions || [];
-  const matchingSuggestion =
-    suggestions.find((suggestion) => suggestion.type === promptId)
-    || suggestions.find((suggestion) => promptId === 'next' && suggestion.type === 'next-step')
-    || suggestions.find((suggestion) => promptId === 'connect' && suggestion.type === 'connection')
-    || suggestions.find((suggestion) => promptId === 'clarify' && suggestion.type === 'clarify')
-    || suggestions[0];
-
-  if (!matchingSuggestion) {
-    return 'Ik zou beginnen met een klein idee dat duidelijk bij je hoofdonderwerp past.';
-  }
-
-  return `${matchingSuggestion.message} ${matchingSuggestion.question}`;
-}
+const AI_ANALYSIS_INTERVAL_MS = 120000;
+const AI_ANALYSIS_DEBOUNCE_MS = 2500;
+const MIN_LABELED_NODES_FOR_AI = 4;
+const AI_FEEDBACK_NODE_PREFIX = 'ai-feedback-';
+const AI_FEEDBACK_EDGE_PREFIX = 'ai-feedback-edge-';
+const AI_FEEDBACK_NODE_WIDTH = 300;
+const AI_FEEDBACK_NODE_HEIGHT = 220;
+const AI_FEEDBACK_HORIZONTAL_GAP = 160;
+const AI_FEEDBACK_VERTICAL_GAP = 34;
 
 function downloadImage(dataUrl, fileName) {
   const link = document.createElement('a');
@@ -88,128 +67,195 @@ function getExportFileName(nodes) {
   return `${safeLabel || 'mind-map'}.png`;
 }
 
-function GuidancePanel({
-  isOpen,
-  guidance,
-  isLoading,
-  error,
-  nodeCount,
-  selectedNode,
-  activeFollowUp,
-  onAnalyze,
-  onFollowUp,
-}) {
-  if (!isOpen) return null;
+function isMindMapNode(node) {
+  return node.type === 'mindMapNode';
+}
 
-  return (
-    <aside className="coach-drawer absolute left-0 top-16 z-20 flex h-[calc(100vh-4rem)] w-[320px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden border-r border-indigo-100 bg-[#eef3ff]">
-      <div className="coach-section py-6">
-        <h1 className="font-sans text-2xl font-bold leading-tight text-indigo-700">AI Coach</h1>
-        <p className="mt-1 font-sans text-sm text-slate-500">
-          {guidance ? 'Stel een vervolgvraag.' : 'Klaar om te kijken?'}
-        </p>
-      </div>
+function isAiFeedbackNode(node) {
+  return node.type === 'aiFeedback' || node.id.startsWith(AI_FEEDBACK_NODE_PREFIX);
+}
 
-      <div className="coach-section pb-5">
-        <button
-          className="coach-analyze-button"
-          onClick={onAnalyze}
-          disabled={isLoading}
-        >
-          {isLoading ? 'Aan het nadenken...' : 'Analyseer mindmap'}
-        </button>
-      </div>
+function isAiFeedbackEdge(edge) {
+  return edge.id?.startsWith(AI_FEEDBACK_EDGE_PREFIX);
+}
 
-      <div className="coach-section pb-3">
-        <p className="truncate font-sans text-sm leading-5 text-slate-600">
-          {selectedNode
-            ? `Focus op "${selectedNode.data?.label || 'Naamloos'}"`
-            : `${nodeCount} node${nodeCount === 1 ? '' : 's'} in deze mindmap`}
-        </p>
-      </div>
+function getCleanMindMap(nodes, edges) {
+  const mindMapNodes = nodes.filter(isMindMapNode);
+  const mindMapNodeIds = new Set(mindMapNodes.map((node) => node.id));
 
-      {error && (
-        <div className="coach-error mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
-          {error}
-        </div>
-      )}
+  return {
+    nodes: mindMapNodes,
+    edges: edges.filter((edge) => (
+      !isAiFeedbackEdge(edge)
+      && mindMapNodeIds.has(edge.source)
+      && mindMapNodeIds.has(edge.target)
+    )),
+  };
+}
 
-      {!guidance && !error && (
-        <div className="coach-section min-h-0 flex-1 overflow-y-auto pb-6">
-          <div className="coach-bubble coach-bubble-ai">
-            Klik op Analyseer mindmap, dan kijk ik eerst naar je ideeen.
-          </div>
-        </div>
-      )}
+function getNodeBounds(node) {
+  const width = node.width || (node.id === 'root' ? 220 : 190);
+  const height = node.height || (node.data?.placeholderImageURL ? 170 : 100);
 
-      {guidance && (
-        <div className="coach-section min-h-0 flex-1 overflow-y-auto pb-6">
-          <div className="coach-bubble coach-bubble-ai">
-            {guidance.overview}
-          </div>
+  return {
+    left: node.position.x,
+    right: node.position.x + width,
+    top: node.position.y,
+    bottom: node.position.y + height,
+    width,
+    height,
+  };
+}
 
-          <div className="mt-4 flex flex-col gap-3">
-            {(guidance.suggestions || []).map((suggestion, index) => (
-              <div
-                key={`${suggestion.nodeId || 'map'}-${index}`}
-                className={`coach-bubble ${
-                  index % 2 === 0 ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className={`text-base font-bold leading-6 ${index % 2 === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    {suggestion.title}
-                  </h2>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-slate-700">{suggestion.message}</p>
-                <p className="mt-3 text-sm font-semibold leading-6 text-slate-900">{suggestion.question}</p>
-              </div>
-            ))}
-          </div>
+function clampFeedbackY(y, minY) {
+  return Math.max(minY, y);
+}
 
-          {activeFollowUp && (
-            <div className="mt-4 flex flex-col gap-3">
-              <div className="coach-bubble coach-bubble-user">
-                {followUpPrompts.find((prompt) => prompt.id === activeFollowUp)?.label}
-              </div>
-              <div className="coach-bubble coach-bubble-ai">
-                {getFollowUpReply(activeFollowUp, guidance)}
-              </div>
-            </div>
-          )}
+function getNodePathLabel(nodeId, mindMapNodes, mindMapEdges) {
+  const nodeById = new Map(mindMapNodes.map((node) => [node.id, node]));
+  const parentByNode = new Map();
 
-          <div className="mt-5 border-t border-indigo-100 pt-4">
-            <p className="font-sans text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Vraag verder</p>
-            <div className="mt-3 flex flex-col gap-2">
-              {followUpPrompts.map((prompt) => (
-                <button
-                  key={prompt.id}
-                  className="coach-follow-up"
-                  onClick={() => onFollowUp(prompt.id)}
-                >
-                  {prompt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </aside>
-  );
+  mindMapEdges.forEach((edge) => {
+    if (!parentByNode.has(edge.target)) {
+      parentByNode.set(edge.target, edge.source);
+    }
+  });
+
+  const pathLabels = [];
+  let currentNodeId = nodeId;
+  const seen = new Set();
+
+  while (currentNodeId && nodeById.has(currentNodeId) && !seen.has(currentNodeId)) {
+    seen.add(currentNodeId);
+    const label = nodeById.get(currentNodeId)?.data?.label;
+    if (label) pathLabels.unshift(label);
+    currentNodeId = parentByNode.get(currentNodeId);
+  }
+
+  return pathLabels.join(' > ') || nodeById.get(nodeId)?.data?.label || 'deze node';
+}
+
+function createFeedbackGraph({ guidance, mindMapNodes, mindMapEdges, dismissFeedbackNode }) {
+  const nodeById = new Map(mindMapNodes.map((node) => [node.id, node]));
+  const fallbackNode = nodeById.get(guidance?.focusNodeId) || mindMapNodes.find((node) => node.id !== 'root') || mindMapNodes[0];
+  const nonRootNodes = mindMapNodes.filter((node) => node.id !== 'root');
+  const mindMapBounds = mindMapNodes.reduce((bounds, node) => {
+    const nodeBounds = getNodeBounds(node);
+
+    return {
+      minY: Math.min(bounds.minY, nodeBounds.top),
+      maxX: Math.max(bounds.maxX, nodeBounds.right),
+    };
+  }, { minY: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY });
+  const feedbackX = Number.isFinite(mindMapBounds.maxX)
+    ? mindMapBounds.maxX + AI_FEEDBACK_HORIZONTAL_GAP
+    : 600;
+  const feedbackMinY = Number.isFinite(mindMapBounds.minY)
+    ? mindMapBounds.minY
+    : 120;
+  const getFallbackForSuggestion = (suggestion, index) => {
+    if (nodeById.has(suggestion.nodeId)) return nodeById.get(suggestion.nodeId);
+    if (suggestion.type === 'next-step') return fallbackNode;
+
+    return nonRootNodes[index % Math.max(nonRootNodes.length, 1)] || fallbackNode;
+  };
+  const occupiedFeedbackRects = [];
+
+  return (guidance?.suggestions || []).slice(0, 3).reduce((graph, suggestion, index) => {
+    const targetNode = getFallbackForSuggestion(suggestion, index);
+    if (!targetNode) return graph;
+
+    const feedbackNodeId = `${AI_FEEDBACK_NODE_PREFIX}${index}`;
+    const targetBounds = getNodeBounds(targetNode);
+    let feedbackY = clampFeedbackY(
+      targetBounds.top + (targetBounds.height / 2) - (AI_FEEDBACK_NODE_HEIGHT / 2),
+      feedbackMinY,
+    );
+
+    while (occupiedFeedbackRects.some((rect) => (
+      feedbackY < rect.bottom + AI_FEEDBACK_VERTICAL_GAP
+      && feedbackY + AI_FEEDBACK_NODE_HEIGHT + AI_FEEDBACK_VERTICAL_GAP > rect.top
+    ))) {
+      feedbackY += AI_FEEDBACK_NODE_HEIGHT + AI_FEEDBACK_VERTICAL_GAP;
+    }
+
+    occupiedFeedbackRects.push({
+      top: feedbackY,
+      bottom: feedbackY + AI_FEEDBACK_NODE_HEIGHT,
+    });
+
+    graph.nodes.push({
+      id: feedbackNodeId,
+      type: 'aiFeedback',
+      position: {
+        x: feedbackX,
+        y: feedbackY,
+      },
+      draggable: false,
+      selectable: false,
+      deletable: false,
+      data: {
+        type: suggestion.type,
+        title: suggestion.title,
+        message: suggestion.message,
+        question: suggestion.question,
+        relatedLabel: getNodePathLabel(targetNode.id, mindMapNodes, mindMapEdges),
+        onDismiss: () => dismissFeedbackNode(feedbackNodeId),
+      },
+    });
+
+    graph.edges.push({
+      id: `${AI_FEEDBACK_EDGE_PREFIX}${index}`,
+      source: targetNode.id,
+      target: feedbackNodeId,
+      targetHandle: 'feedback-target',
+      type: 'straight',
+      animated: false,
+      selectable: false,
+      deletable: false,
+      className: 'ai-feedback-edge',
+      style: {
+        stroke: suggestion.type === 'next-step' ? '#10b981' : '#f43f5e',
+        strokeWidth: 2,
+        strokeDasharray: '4 6',
+      },
+    });
+
+    return graph;
+  }, { nodes: [], edges: [] });
 }
 
 function Flow() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
-  const [guidance, setGuidance] = useState(null);
-  const [guidanceError, setGuidanceError] = useState('');
+  const [coachStatus, setCoachStatus] = useState('AI kijkt mee');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [isCoachOpen, setIsCoachOpen] = useState(false);
-  const [activeFollowUp, setActiveFollowUp] = useState(null);
+  const isAnalyzingRef = useRef(false);
+  const latestMindMapSignatureRef = useRef('');
+  const analysisTimeoutRef = useRef(null);
 
   const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+  const cleanMindMap = useMemo(() => getCleanMindMap(nodes, edges), [edges, nodes]);
+  const mindMapSignature = useMemo(() => JSON.stringify({
+    nodes: cleanMindMap.nodes.map((node) => ({
+      id: node.id,
+      label: node.data?.label || '',
+      level: node.data?.level ?? null,
+      x: Math.round(node.position.x),
+      y: Math.round(node.position.y),
+    })),
+    edges: cleanMindMap.edges.map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+    })),
+    selectedNodeId,
+  }), [cleanMindMap.edges, cleanMindMap.nodes, selectedNodeId]);
+  const labeledNodeCount = useMemo(
+    () => cleanMindMap.nodes.filter((node) => (node.data?.label || '').trim()).length,
+    [cleanMindMap.nodes],
+  );
   const styledEdges = useMemo(
     () => edges.map((edge) => ({
       ...edge,
@@ -224,32 +270,99 @@ function Flow() {
     })),
     [edges],
   );
-  const selectedNode = useMemo(
-    () => nodes.find((node) => node.id === selectedNodeId) || null,
-    [nodes, selectedNodeId],
-  );
 
   const onSelectionChange = useCallback(({ nodes: selectedNodes }) => {
     setSelectedNodeId(selectedNodes[0]?.id || null);
   }, []);
 
-  const handleAnalyzeMindMap = useCallback(async () => {
+  const dismissFeedbackNode = useCallback((nodeId) => {
+    setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
+    setEdges((currentEdges) => currentEdges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
+  }, [setEdges, setNodes]);
+
+  const handleAnalyzeMindMap = useCallback(async ({ silent = false } = {}) => {
+    const { nodes: mindMapNodes, edges: mindMapEdges } = getCleanMindMap(nodes, edges);
+    const labeledCount = mindMapNodes.filter((node) => (node.data?.label || '').trim()).length;
+    const hasEnoughInput = labeledCount >= MIN_LABELED_NODES_FOR_AI;
+
+    if (!hasEnoughInput || isAnalyzingRef.current) {
+      if (!hasEnoughInput) {
+        setCoachStatus(`Nog ${MIN_LABELED_NODES_FOR_AI - labeledCount} idee${MIN_LABELED_NODES_FOR_AI - labeledCount === 1 ? '' : 'en'} nodig`);
+      }
+      return;
+    }
+
+    isAnalyzingRef.current = true;
     setIsAnalyzing(true);
-    setGuidanceError('');
+    if (!silent) setCoachStatus('AI kijkt naar je mindmap');
 
     try {
-      const nextGuidance = await fetchMindMapGuidance({ nodes, edges, selectedNodeId });
-      setGuidance(nextGuidance);
-      setActiveFollowUp(null);
+      const nextGuidance = await fetchMindMapGuidance({
+        nodes: mindMapNodes,
+        edges: mindMapEdges,
+        selectedNodeId,
+      });
+      const feedbackGraph = createFeedbackGraph({
+        guidance: nextGuidance,
+        mindMapNodes,
+        mindMapEdges,
+        dismissFeedbackNode,
+      });
+
+      setNodes((currentNodes) => [
+        ...currentNodes.filter((node) => !isAiFeedbackNode(node)),
+        ...feedbackGraph.nodes,
+      ]);
+      setEdges((currentEdges) => [
+        ...currentEdges.filter((edge) => !isAiFeedbackEdge(edge)),
+        ...feedbackGraph.edges,
+      ]);
+      latestMindMapSignatureRef.current = mindMapSignature;
+      setCoachStatus('Feedback staat in je mindmap');
     } catch (error) {
       console.error(error);
-      setGuidanceError(
-        `AI-hulp is mislukt. Controleer of de backend draait en HF_API_KEY is ingesteld. ${error.message}`,
-      );
+      setCoachStatus('AI kon nu niet meekijken');
     } finally {
+      isAnalyzingRef.current = false;
       setIsAnalyzing(false);
     }
-  }, [edges, nodes, selectedNodeId]);
+  }, [dismissFeedbackNode, edges, mindMapSignature, nodes, selectedNodeId, setEdges, setNodes]);
+
+  useEffect(() => {
+    if (analysisTimeoutRef.current) {
+      clearTimeout(analysisTimeoutRef.current);
+    }
+
+    if (labeledNodeCount < MIN_LABELED_NODES_FOR_AI) {
+      const remainingCount = MIN_LABELED_NODES_FOR_AI - labeledNodeCount;
+      setCoachStatus(`Nog ${remainingCount} idee${remainingCount === 1 ? '' : 'en'} nodig`);
+      return undefined;
+    }
+
+    setCoachStatus((status) => (
+      status === 'AI kijkt naar je mindmap' || status === 'Feedback staat in je mindmap'
+        ? status
+        : 'AI kijkt mee'
+    ));
+
+    analysisTimeoutRef.current = setTimeout(() => {
+      if (latestMindMapSignatureRef.current !== mindMapSignature) {
+        handleAnalyzeMindMap({ silent: true });
+      }
+    }, AI_ANALYSIS_DEBOUNCE_MS);
+
+    return () => clearTimeout(analysisTimeoutRef.current);
+  }, [handleAnalyzeMindMap, labeledNodeCount, mindMapSignature]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (labeledNodeCount >= MIN_LABELED_NODES_FOR_AI && latestMindMapSignatureRef.current !== mindMapSignature) {
+        handleAnalyzeMindMap({ silent: true });
+      }
+    }, AI_ANALYSIS_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [handleAnalyzeMindMap, labeledNodeCount, mindMapSignature]);
 
   const handleExportImage = useCallback(async () => {
     if (nodes.length === 0) return;
@@ -306,6 +419,10 @@ function Flow() {
           <span className="hidden font-sans text-sm text-slate-500 sm:inline">Jouw ideeencanvas</span>
         </div>
         <div className="topbar-actions">
+          <div className="coach-status" aria-live="polite">
+            <span className={isAnalyzing ? 'coach-status-dot is-thinking' : 'coach-status-dot'} />
+            {coachStatus}
+          </div>
           <button
             className="export-button"
             onClick={handleExportImage}
@@ -315,24 +432,13 @@ function Flow() {
           </button>
           <button
             className="coach-launcher"
-            onClick={() => setIsCoachOpen((open) => !open)}
+            onClick={() => handleAnalyzeMindMap()}
+            disabled={isAnalyzing || labeledNodeCount < MIN_LABELED_NODES_FOR_AI}
           >
-            {isCoachOpen ? 'Sluit' : 'AI Coach'}
+            {isAnalyzing ? 'Checkt...' : 'Check nu'}
           </button>
         </div>
       </header>
-
-      <GuidancePanel
-        isOpen={isCoachOpen}
-        guidance={guidance}
-        isLoading={isAnalyzing}
-        error={guidanceError}
-        nodeCount={nodes.length}
-        selectedNode={selectedNode}
-        activeFollowUp={activeFollowUp}
-        onAnalyze={handleAnalyzeMindMap}
-        onFollowUp={setActiveFollowUp}
-      />
 
       <ReactFlow
         nodes={nodes}
