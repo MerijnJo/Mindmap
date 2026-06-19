@@ -89,7 +89,7 @@ Zorg dat Node.js is geinstalleerd. Installeer daarna de dependencies:
 npm install
 ```
 
-Maak een `.env` bestand aan in de root van het project:
+Kopieer `.env.example` naar `.env` in de root van het project en vul je eigen API keys in:
 
 ```env
 UNSPLASH_ACCESS_KEY=your_unsplash_access_key
