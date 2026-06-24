@@ -165,8 +165,34 @@ async function searchUnsplash({ accessKey, query, lang }) {
     per_page: '1',
     client_id: accessKey,
   });
-  const response = await fetch(`https://api.unsplash.com/search/photos?${params.toString()}`);
-  const data = await response.json();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), imageSearchTimeoutMs);
+  let response;
+
+  try {
+    response = await fetch(`https://api.unsplash.com/search/photos?${params.toString()}`, {
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      const timeoutError = new Error('Unsplash duurde te lang om te antwoorden. Probeer het zo nog eens.');
+      timeoutError.status = 504;
+      throw timeoutError;
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const responseText = await response.text();
+  let data = {};
+
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    data = { errors: [responseText] };
+  }
 
   if (!response.ok) {
     console.error('Unsplash API Error:', data);
@@ -234,6 +260,7 @@ async function handleImageSearch(req, res) {
       if (imageUrl) {
         return res.json({
           imageUrl,
+          imageProvider: 'unsplash',
           searchQuery: candidate.query,
           searchLanguage: candidate.lang,
           usedContext: Boolean(context.parentLabels.length || context.childLabels.length || context.rootLabel),
